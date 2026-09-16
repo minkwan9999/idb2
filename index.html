@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>널링 비전 측정 모바일 앱 (프로파일 + 결육 2점 조절)</title>
+    <title>널링 비전 측정 모바일 앱 (4점 개별 조절)</title>
     <style>
         * { box-sizing: border-box; touch-action: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
@@ -24,18 +24,22 @@
         #video, #vision-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
         #vision-canvas { z-index: 5; image-rendering: -webkit-optimize-contrast; display: none; }
 
-        /* 인터랙티브 오버레이 컨테이너 */
+        /* 인터랙티브 측정 오버레이 레이어 */
         #overlay-container { position: absolute; width: 100%; height: 100%; z-index: 10; display: none; }
 
-        /* 파란색 프로파일 박스 (전체 이동용) */
-        #blue-box { position: absolute; width: 320px; height: 200px; top: 40%; left: 50%; transform: translate(-50%, -50%); cursor: grab; }
-        #blue-box:active { cursor: grabbing; }
+        /* 라인 렌더링 SVG */
+        #lines-svg { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 12; }
 
-        /* 빨간색 결육 조절점 (포인트 1, 포인트 2) */
-        .red-handle { position: absolute; width: 36px; height: 36px; background: rgba(231, 76, 60, 0.8); border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 10px; font-weight: bold; box-shadow: 0 0 8px rgba(0,0,0,0.5); }
+        /* 조절점 스타일 (파란색: 프로파일 산, 빨간색: 결육) */
+        .handle { position: absolute; width: 38px; height: 38px; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 10px; font-weight: bold; box-shadow: 0 0 10px rgba(0,0,0,0.6); }
         
-        #handle-1 { top: 60%; left: 35%; }
-        #handle-2 { top: 60%; left: 65%; }
+        .blue-handle { background: rgba(0, 210, 255, 0.85); color: #000; }
+        .red-handle { background: rgba(231, 76, 60, 0.85); color: #fff; }
+
+        #handle-b1 { top: 40%; left: 35%; }
+        #handle-b2 { top: 40%; left: 65%; }
+        #handle-r1 { top: 65%; left: 42%; }
+        #handle-r2 { top: 65%; left: 58%; }
 
         /* 우측 줌 컨트롤 */
         #zoom-control { position: absolute; right: 15px; top: 15px; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -49,7 +53,7 @@
         .btn-settings { background: #7f8c8d; color: white; max-width: 80px; }
 
         /* 안내 툴팁 */
-        #guide-tip { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: #00d2ff; z-index: 25; display: none; pointer-events: none; border: 1px solid #00d2ff; }
+        #guide-tip { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: #00d2ff; z-index: 25; display: none; pointer-events: none; border: 1px solid #00d2ff; text-align: center; }
 
         /* 설정 모달 */
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
@@ -79,22 +83,21 @@
 
         <!-- 캡처 후 활성화되는 조절 레이어 -->
         <div id="overlay-container">
-            <!-- 파란색 프로파일 (드래그하여 전체 위치 이동) -->
-            <svg id="blue-box" viewBox="0 0 320 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 120 L90 30 L160 120 L230 30 L300 120" stroke="#00d2ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg id="lines-svg" xmlns="http://www.w3.org/2000/svg">
+                <!-- 파란색 프로파일 연결선 -->
+                <line id="line-blue" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="5" stroke-linecap="round"/>
+                <!-- 빨간색 결육 측정선 -->
+                <line id="line-red" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
             </svg>
 
-            <!-- 빨간색 결육 조절점 2개 -->
-            <div id="handle-1" class="red-handle">P1</div>
-            <div id="handle-2" class="red-handle">P2</div>
-
-            <!-- 빨간색 측정 연결선 렌더링용 SVG -->
-            <svg id="red-line-svg" style="position:absolute; width:100%; height:100%; pointer-events:none; z-index:12;" xmlns="http://www.w3.org/2000/svg">
-                <line id="measured-red-line" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
-            </svg>
+            <!-- 4개의 개별 조절점 (파란점 2개, 빨간점 2개) -->
+            <div id="handle-b1" class="handle blue-handle">B1</div>
+            <div id="handle-b2" class="handle blue-handle">B2</div>
+            <div id="handle-r1" class="handle red-handle">R1</div>
+            <div id="handle-r2" class="handle red-handle">R2</div>
         </div>
 
-        <div id="guide-tip">💡 파란선은 전체 이동, P1/P2는 빨간 결육 양끝을 맞추세요</div>
+        <div id="guide-tip">💡 B1/B2는 파란 산 꼭대기에, R1/R2는 빨간 결육 양끝에 맞추세요</div>
 
         <!-- 우측 줌 컨트롤 -->
         <div id="zoom-control">
@@ -106,7 +109,7 @@
     <!-- 하단 제어 버튼 -->
     <div id="control-panel">
         <button class="btn btn-settings" onclick="openSettings()">설정</button>
-        <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 위치 조절</button>
+        <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
     </div>
 
     <!-- 설정 모달 -->
@@ -130,10 +133,14 @@
     const zoomSlider = document.getElementById('zoom-slider');
     const mainBtn = document.getElementById('main-btn');
     const overlayContainer = document.getElementById('overlay-container');
-    const blueBox = document.getElementById('blue-box');
-    const handle1 = document.getElementById('handle-1');
-    const handle2 = document.getElementById('handle-2');
-    const redLine = document.getElementById('measured-red-line');
+    
+    const handleB1 = document.getElementById('handle-b1');
+    const handleB2 = document.getElementById('handle-b2');
+    const handleR1 = document.getElementById('handle-r1');
+    const handleR2 = document.getElementById('handle-r2');
+    
+    const lineBlue = document.getElementById('line-blue');
+    const lineRed = document.getElementById('line-red');
     const guideTip = document.getElementById('guide-tip');
 
     let targetLength = 2.98;
@@ -142,22 +149,7 @@
     let isCaptured = false;
     let currentZoom = 1;
 
-    // 파란색 박스 드래그 이동 로직
-    let isDraggingBlue = false, startBlueX, startBlueY, blueX = 0, blueY = 0;
-    blueBox.addEventListener('pointerdown', (e) => {
-        isDraggingBlue = true;
-        startBlueX = e.clientX - blueX;
-        startBlueY = e.clientY - blueY;
-    });
-    window.addEventListener('pointermove', (e) => {
-        if (!isDraggingBlue) return;
-        blueX = e.clientX - startBlueX;
-        blueY = e.clientY - startBlueY;
-        blueBox.style.transform = `translate(calc(-50% + ${blueX}px), calc(-50% + ${blueY}px))`;
-    });
-    window.addEventListener('pointerup', () => { isDraggingBlue = false; });
-
-    // 빨간색 핸들(P1, P2) 개별 드래그 로직
+    // 각 핸들별 개별 드래그 이벤트 연결
     let activeHandle = null;
     function setupHandleDrag(handle) {
         handle.addEventListener('pointerdown', (e) => {
@@ -165,25 +157,39 @@
             e.stopPropagation();
         });
     }
-    setupHandleDrag(handle1);
-    setupHandleDrag(handle2);
+    setupHandleDrag(handleB1);
+    setupHandleDrag(handleB2);
+    setupHandleDrag(handleR1);
+    setupHandleDrag(handleR2);
 
     window.addEventListener('pointermove', (e) => {
         if (!activeHandle) return;
         activeHandle.style.left = `${e.clientX}px`;
         activeHandle.style.top = `${e.clientY}px`;
-        updateRedLinePosition();
+        updateAllLines();
     });
     window.addEventListener('pointerup', () => { activeHandle = null; });
 
-    // 빨간색 결육 연결선 좌표 실시간 업데이트
-    function updateRedLinePosition() {
-        const r1 = handle1.getBoundingClientRect();
-        const r2 = handle2.getBoundingClientRect();
-        redLine.setAttribute('x1', r1.left + r1.width / 2);
-        redLine.setAttribute('y1', r1.top + r1.height / 2);
-        redLine.setAttribute('x2', r2.left + r2.width / 2);
-        redLine.setAttribute('y2', r2.top + r2.height / 2);
+    // 파란선 및 빨간선 좌표 실시간 갱신
+    function updateAllLines() {
+        const getCenter = (el) => {
+            const r = el.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        };
+
+        const b1 = getCenter(handleB1);
+        const b2 = getCenter(handleB2);
+        lineBlue.setAttribute('x1', b1.x);
+        lineBlue.setAttribute('y1', b1.y);
+        lineBlue.setAttribute('x2', b2.x);
+        lineBlue.setAttribute('y2', b2.y);
+
+        const r1 = getCenter(handleR1);
+        const r2 = getCenter(handleR2);
+        lineRed.setAttribute('x1', r1.x);
+        lineRed.setAttribute('y1', r1.y);
+        lineRed.setAttribute('x2', r2.x);
+        lineRed.setAttribute('y2', r2.y);
     }
 
     async function initCamera() {
@@ -230,19 +236,21 @@
             overlayContainer.style.display = 'block';
             guideTip.style.display = 'block';
             
-            // 초기 핸들 위치 설정 (화면 중앙 기준)
+            // 캡처 직후 핸들 초기 배치 (화면 중앙 기준)
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
-            handle1.style.left = `${cx - 50}px`;
-            handle1.style.top = `${cy + 20}px`;
-            handle2.style.left = `${cx + 50}px`;
-            handle2.style.top = `${cy + 20}px`;
-            updateRedLinePosition();
+            
+            handleB1.style.left = `${cx - 60}px`; handleB1.style.top = `${cy - 40}px`;
+            handleB2.style.left = `${cx + 60}px`; handleB2.style.top = `${cy - 40}px`;
+            handleR1.style.left = `${cx - 30}px`; handleR1.style.top = `${cy + 40}px`;
+            handleR2.style.left = `${cx + 30}px`; handleR2.style.top = `${cy + 40}px`;
+            
+            updateAllLines();
 
             isCaptured = true;
             mainBtn.innerText = "측정 확정 (OK/NG 판정)";
             mainBtn.style.backgroundColor = "#27ae60";
-            statusBadge.innerText = "위치 미세조정 중";
+            statusBadge.innerText = "포인트 미세조정 중";
 
         } else {
             // 측정 확정 및 판정 실행
@@ -276,10 +284,7 @@
             guideTip.style.display = 'none';
             
             isCaptured = false;
-            blueX = 0; blueY = 0;
-            blueBox.style.transform = `translate(-50%, -50%)`;
-            
-            mainBtn.innerText = "캡처 및 위치 조절";
+            mainBtn.innerText = "캡처 및 포인트 조절";
             mainBtn.style.backgroundColor = "#2980b9";
             statusBadge.innerText = "대기 중";
             statusBadge.className = "";
