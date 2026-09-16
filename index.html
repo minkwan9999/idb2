@@ -38,6 +38,7 @@
 
         #handle-b1 { top: 40%; left: 35%; }
         #handle-b2 { top: 40%; left: 65%; }
+        #handle-b3 { top: 25%; left: 50%; }
         #handle-r1 { top: 65%; left: 42%; }
         #handle-r2 { top: 65%; left: 58%; }
 
@@ -83,13 +84,15 @@
         <!-- 캡처 후 활성화되는 조절 레이어 -->
         <div id="overlay-container">
             <svg id="lines-svg" xmlns="http://www.w3.org/2000/svg">
-                <line id="line-blue" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="5" stroke-linecap="round"/>
+                <line id="line-blue-1" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="5" stroke-linecap="round"/>
+                <line id="line-blue-2" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="5" stroke-linecap="round"/>
                 <line id="line-red" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
             </svg>
 
-            <!-- 4개의 개별 조절점 -->
+            <!-- 5개의 개별 조절점 (b1, b2, b3 / r1, r2) -->
             <div id="handle-b1" class="handle blue-handle">B1</div>
             <div id="handle-b2" class="handle blue-handle">B2</div>
+            <div id="handle-b3" class="handle blue-handle">B3</div>
             <div id="handle-r1" class="handle red-handle">R1</div>
             <div id="handle-r2" class="handle red-handle">R2</div>
         </div>
@@ -107,7 +110,7 @@
             <button class="btn btn-settings" onclick="openSettings()">설정</button>
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.2.1 (Knurling Inspector)</div>
+        <div class="app-version">v1.3.1 (Knurling Inspector)</div>
     </div>
 
     <!-- 설정 모달 -->
@@ -132,20 +135,20 @@
     
     const handleB1 = document.getElementById('handle-b1');
     const handleB2 = document.getElementById('handle-b2');
+    const handleB3 = document.getElementById('handle-b3');
     const handleR1 = document.getElementById('handle-r1');
     const handleR2 = document.getElementById('handle-r2');
     
-    const lineBlue = document.getElementById('line-blue');
+    const lineBlue1 = document.getElementById('line-blue-1');
+    const lineBlue2 = document.getElementById('line-blue-2');
     const lineRed = document.getElementById('line-red');
 
     let targetLength = 2.98;
     const tolerance = 0.30;
-    const peakHeight = 0.25; // 산높이 참조값 (0.25mm)
+    const referenceHeight = 0.25; // 기준 산 높이 (0.25mm)
     let videoStream = null;
     let isCaptured = false;
     let currentZoom = 4;
-
-    let pixelToMmRatio = 0.05;
 
     let activeHandle = null;
     function setupHandleDrag(handle) {
@@ -156,6 +159,7 @@
     }
     setupHandleDrag(handleB1);
     setupHandleDrag(handleB2);
+    setupHandleDrag(handleB3);
     setupHandleDrag(handleR1);
     setupHandleDrag(handleR2);
 
@@ -175,10 +179,18 @@
 
         const b1 = getCenter(handleB1);
         const b2 = getCenter(handleB2);
-        lineBlue.setAttribute('x1', b1.x);
-        lineBlue.setAttribute('y1', b1.y);
-        lineBlue.setAttribute('x2', b2.x);
-        lineBlue.setAttribute('y2', b2.y);
+        const b3 = getCenter(handleB3);
+
+        // 파란선 2개로 삼각형 형성 (b2-b3, b3-b1)
+        lineBlue1.setAttribute('x1', b2.x);
+        lineBlue1.setAttribute('y1', b2.y);
+        lineBlue1.setAttribute('x2', b3.x);
+        lineBlue1.setAttribute('y2', b3.y);
+
+        lineBlue2.setAttribute('x1', b3.x);
+        lineBlue2.setAttribute('y1', b3.y);
+        lineBlue2.setAttribute('x2', b1.x);
+        lineBlue2.setAttribute('y2', b1.y);
 
         const r1 = getCenter(handleR1);
         const r2 = getCenter(handleR2);
@@ -187,13 +199,21 @@
         lineRed.setAttribute('x2', r2.x);
         lineRed.setAttribute('y2', r2.y);
 
+        // 높이 계산: b2와 b1을 잇는 선분 기준에서 b3까지의 수직 거리 (삼각형 높이 px)
+        const baseMidX = (b2.x + b1.x) / 2;
+        const baseMidY = (b2.y + b1.y) / 2;
+        const heightPx = Math.abs(b3.y - baseMidY);
+
+        // 배율 = 삼각형 높이(px) / 0.25
+        const scaleFactor = heightPx > 0 ? heightPx / referenceHeight : 1;
+
+        // 빨간색 결육 픽셀 거리 계산
         const dx = r2.x - r1.x;
         const dy = r2.y - r1.y;
-        const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-        
-        // 산높이(peakHeight) 0.25mm를 참조한 결육길이 보정 연산 반영
-        const baseMeasuredVal = (pixelDistance / currentZoom) * pixelToMmRatio;
-        const currentMeasuredVal = parseFloat((baseMeasuredVal + peakHeight * 0.1).toFixed(2));
+        const redPixelDistance = Math.sqrt(dx * dx + dy * dy);
+
+        // 실시간 길이 = 결육픽셀거리 * 배율 (줌 보정 포함)
+        const currentMeasuredVal = parseFloat(((redPixelDistance / currentZoom) / scaleFactor * 0.1).toFixed(2));
 
         const diff = Math.abs(currentMeasuredVal - targetLength);
         if (isCaptured) {
@@ -255,10 +275,11 @@
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
             
-            handleB1.style.left = `${cx - 60}px`; handleB1.style.top = `${cy - 40}px`;
-            handleB2.style.left = `${cx + 60}px`; handleB2.style.top = `${cy - 40}px`;
-            handleR1.style.left = `${cx - 30}px`; handleR1.style.top = `${cy + 40}px`;
-            handleR2.style.left = `${cx + 30}px`; handleR2.style.top = `${cy + 40}px`;
+            handleB1.style.left = `${cx - 60}px`; handleB1.style.top = `${cy + 30}px`;
+            handleB2.style.left = `${cx + 60}px`; handleB2.style.top = `${cy + 30}px`;
+            handleB3.style.left = `${cx}px`; handleB3.style.top = `${cy - 40}px`;
+            handleR1.style.left = `${cx - 30}px`; handleR1.style.top = `${cy + 50}px`;
+            handleR2.style.left = `${cx + 30}px`; handleR2.style.top = `${cy + 50}px`;
             
             updateAllLinesAndMeasurement();
 
