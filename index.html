@@ -54,9 +54,6 @@
         .btn-settings { background: #7f8c8d; color: white; max-width: 80px; }
         .app-version { font-size: 11px; color: #666; text-align: center; margin-top: 2px; }
 
-        /* 안내 툴팁 */
-        #guide-tip { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: #00d2ff; z-index: 25; display: none; pointer-events: none; border: 1px solid #00d2ff; text-align: center; }
-
         /* 설정 모달 */
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
         .modal-card { background: #2c3e50; padding: 20px; border-radius: 12px; width: 85%; max-width: 320px; }
@@ -72,8 +69,8 @@
     <!-- 상단 안내 패널 -->
     <div id="header-panel">
         <div class="spec-info">
-            <span>기준 규격 / 공차</span>
-            <strong id="spec-display">2.98 ±0.30 mm</strong>
+            <span>기준 규격</span>
+            <strong id="spec-display">2.98 mm</strong>
         </div>
         <div id="status-badge">대기 중</div>
     </div>
@@ -97,9 +94,7 @@
             <div id="handle-r2" class="handle red-handle">R2</div>
         </div>
 
-        <div id="guide-tip">💡 빨간점(R1, R2)을 움직이면 길이가 실시간으로 계산됩니다</div>
-
-        <!-- 우측 줌 컨트롤 (기본값 최대 4배) -->
+        <!-- 우측 줌 컨트롤 (맥스 디폴트) -->
         <div id="zoom-control">
             <span>ZOOM</span>
             <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="4" oninput="updateZoom(this.value)">
@@ -112,7 +107,7 @@
             <button class="btn btn-settings" onclick="openSettings()">설정</button>
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.2.0 (Knurling Inspector)</div>
+        <div class="app-version">v1.2.1 (Knurling Inspector)</div>
     </div>
 
     <!-- 설정 모달 -->
@@ -121,8 +116,6 @@
             <h3>측정 규격 설정</h3>
             <label>기준 규격 (mm)</label>
             <input type="number" id="input-target" value="2.98" step="0.01">
-            <label>허용 공차 범위 (±mm)</label>
-            <input type="number" id="input-tolerance" value="0.30" step="0.01">
             <button onclick="closeSettings()">저장 및 적용</button>
         </div>
     </div>
@@ -144,10 +137,10 @@
     
     const lineBlue = document.getElementById('line-blue');
     const lineRed = document.getElementById('line-red');
-    const guideTip = document.getElementById('guide-tip');
 
     let targetLength = 2.98;
-    let tolerance = 0.30;
+    const tolerance = 0.30;
+    const peakHeight = 0.25; // 산높이 참조값 (0.25mm)
     let videoStream = null;
     let isCaptured = false;
     let currentZoom = 4;
@@ -198,7 +191,9 @@
         const dy = r2.y - r1.y;
         const pixelDistance = Math.sqrt(dx * dx + dy * dy);
         
-        const currentMeasuredVal = parseFloat(((pixelDistance / currentZoom) * pixelToMmRatio).toFixed(2));
+        // 산높이(peakHeight) 0.25mm를 참조한 결육길이 보정 연산 반영
+        const baseMeasuredVal = (pixelDistance / currentZoom) * pixelToMmRatio;
+        const currentMeasuredVal = parseFloat((baseMeasuredVal + peakHeight * 0.1).toFixed(2));
 
         const diff = Math.abs(currentMeasuredVal - targetLength);
         if (isCaptured) {
@@ -256,7 +251,6 @@
             canvas.style.display = 'block';
             
             overlayContainer.style.display = 'block';
-            guideTip.style.display = 'block';
             
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
@@ -274,7 +268,6 @@
 
         } else {
             overlayContainer.style.display = 'none';
-            guideTip.style.display = 'none';
             
             mainBtn.innerText = "재촬영 (RESET)";
             mainBtn.style.backgroundColor = "#e74c3c";
@@ -284,7 +277,6 @@
             canvas.style.display = 'none';
             video.style.display = 'block';
             overlayContainer.style.display = 'none';
-            guideTip.style.display = 'none';
             
             isCaptured = false;
             mainBtn.innerText = "캡처 및 포인트 조절";
@@ -297,8 +289,7 @@
     function openSettings() { document.getElementById('modal').style.display = 'flex'; }
     function closeSettings() {
         targetLength = parseFloat(document.getElementById('input-target').value);
-        tolerance = parseFloat(document.getElementById('input-tolerance').value);
-        document.getElementById('spec-display').innerText = `${targetLength.toFixed(2)} ±${tolerance.toFixed(2)} mm`;
+        document.getElementById('spec-display').innerText = `${targetLength.toFixed(2)} mm`;
         document.getElementById('modal').style.display = 'none';
     }
 
