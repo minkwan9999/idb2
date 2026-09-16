@@ -33,7 +33,6 @@
         /* 조절점 스타일 (원 크기: 26px) */
         .handle { position: absolute; width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 9px; font-weight: bold; box-shadow: 0 0 6px rgba(0,0,0,0.6); }
         
-        /* 파란색 투명도 적용 */
         .blue-handle { background: rgba(0, 210, 255, 0.5); color: #000; }
         .red-handle { background: rgba(231, 76, 60, 0.85); color: #fff; }
 
@@ -101,7 +100,7 @@
         <div class="btn-row">
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.4.4 (Knurling Inspector)</div>
+        <div class="app-version">v1.4.5 (Knurling Inspector)</div>
     </div>
 </div>
 
@@ -198,7 +197,6 @@
         const rDy = r2.y - r1.y;
         const redPixelDistance = Math.sqrt(rDx * rDx + rDy * rDy);
 
-        // 10배 배율 오류 수정: (결육 픽셀 / 법선 픽셀) * 0.25mm
         const currentMeasuredVal = normalHeightPx > 0 
             ? parseFloat(((redPixelDistance / normalHeightPx) * referenceHeight).toFixed(3)) 
             : 0;
@@ -216,9 +214,27 @@
 
     async function initCamera() {
         try {
-            const constraints = { video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false };
+            const constraints = {
+                video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
+                audio: false
+            };
             videoStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = videoStream;
+
+            // 크롬 하드웨어 오토포커스(Continuous Auto Focus) 강제 주입
+            const track = videoStream.getVideoTracks()[0];
+            if (track && track.getCapabilities) {
+                const capabilities = track.getCapabilities();
+                if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                    await track.applyConstraints({
+                        advanced: [{ focusMode: 'continuous' }]
+                    });
+                }
+            }
         } catch (err) {
             try {
                 videoStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
@@ -237,14 +253,13 @@
         video.style.transform = `scale(${currentZoom})`;
     }
 
-    // 3단계 자동 고대비 보정 파이프라인 (흑백화 -> 히스토그램 스트레칭 -> 엣지 샤프닝)
+    // 3단계 고대비 보정 파이프라인 (흑백화 -> 히스토그램 확장 -> 엣지 강화)
     function applyAutoEnhancement(w, h) {
         try {
             const imgData = ctx.getImageData(0, 0, w, h);
             const d = imgData.data;
             const totalPx = w * h;
 
-            // 1단계: 흑백화 및 최소/최대 밝기(히스토그램) 스캔
             const gray = new Uint8Array(totalPx);
             let minVal = 255;
             let maxVal = 0;
@@ -257,7 +272,6 @@
                 if (lum > maxVal) maxVal = lum;
             }
 
-            // 2단계: 히스토그램 명암비 확장 (0~255 스트레칭)
             const range = maxVal - minVal;
             const stretched = new Uint8Array(totalPx);
             if (range > 10) {
@@ -268,7 +282,6 @@
                 stretched.set(gray);
             }
 
-            // 3단계: 노이즈 억제형 언샤프 마스크 (산-골 엣지 강화)
             for (let y = 1; y < h - 1; y++) {
                 for (let x = 1; x < w - 1; x++) {
                     const idx = y * w + x;
@@ -290,7 +303,7 @@
 
             ctx.putImageData(imgData, 0, 0);
         } catch (e) {
-            console.error("보정 파이프라인 처리 중 오류:", e);
+            console.error("보정 파이프라인 오류:", e);
         }
     }
 
@@ -304,6 +317,7 @@
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
 
+            // 고해상도 무손실 중앙 크롭 캡처 (디지털 확대 뭉개짐 방지)
             const cropW = vW / currentZoom;
             const cropH = vH / currentZoom;
             const cropX = (vW - cropW) / 2;
@@ -311,7 +325,7 @@
 
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, vW, vH);
 
-            // 캡처 직후 3단계 자동 고대비 파이프라인 가동
+            // 자동 고대비 파이프라인 실행
             applyAutoEnhancement(vW, vH);
 
             video.style.display = 'none';
