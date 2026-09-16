@@ -30,10 +30,11 @@
         /* 라인 렌더링 SVG */
         #lines-svg { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 12; }
 
-        /* 조절점 스타일 */
-        .handle { position: absolute; width: 42px; height: 42px; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 11px; font-weight: bold; box-shadow: 0 0 10px rgba(0,0,0,0.6); }
+        /* 조절점 스타일 (크기 축소: 42px -> 26px) */
+        .handle { position: absolute; width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 9px; font-weight: bold; box-shadow: 0 0 6px rgba(0,0,0,0.6); }
         
-        .blue-handle { background: rgba(0, 210, 255, 0.85); color: #000; }
+        /* 파란색 투명도 적용 (opacity: 0.5) */
+        .blue-handle { background: rgba(0, 210, 255, 0.5); color: #000; }
         .red-handle { background: rgba(231, 76, 60, 0.85); color: #fff; }
 
         #handle-b1 { top: 40%; left: 35%; }
@@ -75,12 +76,13 @@
         <!-- 캡처 후 활성화되는 조절 레이어 -->
         <div id="overlay-container">
             <svg id="lines-svg" xmlns="http://www.w3.org/2000/svg">
-                <line id="line-blue-1" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="5" stroke-linecap="round"/>
-                <line id="line-blue-2" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="5" stroke-linecap="round"/>
-                <line id="line-red" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+                <!-- 파란색 선 투명도 부여 (stroke-opacity: 0.5) -->
+                <line id="line-blue-1" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="4" stroke-opacity="0.5" stroke-linecap="round"/>
+                <line id="line-blue-2" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="4" stroke-opacity="0.5" stroke-linecap="round"/>
+                <line id="line-red" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
             </svg>
 
-            <!-- 5개의 개별 조절점 (b1, b2, b3 / r1, r2) -->
+            <!-- 5개의 개별 조절점 -->
             <div id="handle-b1" class="handle blue-handle">B1</div>
             <div id="handle-b2" class="handle blue-handle">B2</div>
             <div id="handle-b3" class="handle blue-handle">B3</div>
@@ -100,7 +102,7 @@
         <div class="btn-row">
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.3.9 (Knurling Inspector)</div>
+        <div class="app-version">v1.4.0 (Knurling Inspector)</div>
     </div>
 </div>
 
@@ -165,7 +167,6 @@
         lineBlue1.setAttribute('x2', b2.x);
         lineBlue1.setAttribute('y2', b2.y);
 
-        // B1-B2 선분에서 B3로 내린 수선의 발 좌표 계산
         const x1 = b1.x, y1 = b1.y;
         const x2 = b2.x, y2 = b2.y;
         const x3 = b3.x, y3 = b3.y;
@@ -193,18 +194,13 @@
         lineRed.setAttribute('x2', r2.x);
         lineRed.setAttribute('y2', r2.y);
 
-        // 법선 길이 (픽셀) 계산
         const normalHeightPx = Math.sqrt((x3 - footX) * (x3 - footX) + (y3 - footY) * (y3 - footY));
-
-        // 빨간색 결육 픽셀 거리 계산
         const rDx = r2.x - r1.x;
         const rDy = r2.y - r1.y;
         const redPixelDistance = Math.sqrt(rDx * rDx + rDy * rDy);
 
-        // [핵심 보정] 캡처 화면 캔버스의 고해상도(실제 픽셀)와 화면 CSS 스케일 비율 동기화 보정계수(10배 오차 해결)
-        // 캔버스 드로우 시 화면 CSS 대비 10배 차이가 나던 스케일 팩터를 정확한 비율(0.1배 보정)로 매칭
         const rawRatio = normalHeightPx > 0 ? (redPixelDistance / normalHeightPx) * referenceHeight : 0;
-        const currentMeasuredVal = parseFloat((rawRatio * 10).toFixed(3)); // 10배 확대 스케일 정밀 보정
+        const currentMeasuredVal = parseFloat((rawRatio * 10).toFixed(3));
 
         if (isCaptured) {
             if (currentMeasuredVal >= threshold) {
