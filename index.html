@@ -70,8 +70,8 @@
     <!-- 상단 안내 패널 -->
     <div id="header-panel">
         <div class="spec-info">
-            <span>기준 규격 | 실시간 산 높이</span>
-            <strong id="spec-display">2.98 mm | <span id="calc-height">0.00</span> mm</strong>
+            <span>기준 규격</span>
+            <strong id="spec-display">2.98 mm</strong>
         </div>
         <div id="status-badge">대기 중</div>
     </div>
@@ -110,7 +110,7 @@
             <button class="btn btn-settings" onclick="openSettings()">설정</button>
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.3.5 (Knurling Inspector)</div>
+        <div class="app-version">v1.3.6 (Knurling Inspector)</div>
     </div>
 
     <!-- 설정 모달 -->
@@ -132,7 +132,6 @@
     const zoomSlider = document.getElementById('zoom-slider');
     const mainBtn = document.getElementById('main-btn');
     const overlayContainer = document.getElementById('overlay-container');
-    const calcHeightEl = document.getElementById('calc-height');
     
     const handleB1 = document.getElementById('handle-b1');
     const handleB2 = document.getElementById('handle-b2');
@@ -146,7 +145,7 @@
 
     let targetLength = 2.98;
     const tolerance = 0.30;
-    const referenceHeight = 0.25; // 기준 산 높이 (0.25mm)
+    const referenceHeight = 0.25; // 기준 법선 길이 (0.25mm)
     let videoStream = null;
     let isCaptured = false;
     let currentZoom = 4;
@@ -187,11 +186,28 @@
         lineBlue1.setAttribute('x2', b2.x);
         lineBlue1.setAttribute('y2', b2.y);
 
-        // b1, b2 선분에서 b3로 내린 법선(높이) 계산 및 시각화용 선분 연결
-        lineBlue2.setAttribute('x1', (b1.x + b2.x) / 2);
-        lineBlue2.setAttribute('y1', (b1.y + b2.y) / 2);
-        lineBlue2.setAttribute('x2', b3.x);
-        lineBlue2.setAttribute('y2', b3.y);
+        // B1-B2 선분에서 B3로 내린 법선(수직선) 시각화
+        lineBlue2.setAttribute('x1', b3.x);
+        lineBlue2.setAttribute('y1', b3.y);
+        
+        // B1-B2 직선에 B3에서 내린 수선의 발 좌표 계산
+        const x1 = b1.x, y1 = b1.y;
+        const x2 = b2.x, y2 = b2.y;
+        const x3 = b3.x, y3 = b3.y;
+        
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lengthSq = dx * dx + dy * dy;
+        
+        let footX = x3, footY = y3;
+        if (lengthSq !== 0) {
+            const t = ((x3 - x1) * dx + (y3 - y1) * dy) / lengthSq;
+            footX = x1 + t * dx;
+            footY = y1 + t * dy;
+        }
+        
+        lineBlue2.setAttribute('x2', footX);
+        lineBlue2.setAttribute('y2', footY);
 
         const r1 = getCenter(handleR1);
         const r2 = getCenter(handleR2);
@@ -200,26 +216,19 @@
         lineRed.setAttribute('x2', r2.x);
         lineRed.setAttribute('y2', r2.y);
 
-        // b1-b2 선분과 b3 간의 수직 거리(법선 길이 px) 계산
-        const A = b2.y - b1.y;
-        const B = b1.x - b2.x;
-        const C = (b2.x * b1.y) - (b1.x * b2.y);
-        const normalHeightPx = Math.abs(A * b3.x + B * b3.y + C) / Math.sqrt(A * A + B * B);
+        // B1-B2 선분에서 B3까지의 법선 길이(px) 계산
+        const normalHeightPx = Math.sqrt((x3 - footX) * (x3 - footX) + (y3 - footY) * (y3 - footY));
 
-        // 법선 높이를 실제 mm로 환산하여 상단 표기 (참조 높이 0.25mm 활용)
-        const liveHeightMm = parseFloat(((normalHeightPx / currentZoom) * (referenceHeight / (normalHeightPx > 0 ? normalHeightPx : 1)) * (normalHeightPx / 100)).toFixed(3)) || 0.25;
-        calcHeightEl.innerText = liveHeightMm;
-
-        // 배율 산정: (B1-B2 선분에서 B3로 내린 법선 길이 px) / 0.25mm
+        // 배율 = 법선 길이(px) / 0.25mm
         const scaleFactor = normalHeightPx > 0 ? normalHeightPx / referenceHeight : 1;
 
         // 빨간색 결육 픽셀 거리 계산
-        const dx = r2.x - r1.x;
-        const dy = r2.y - r1.y;
-        const redPixelDistance = Math.sqrt(dx * dx + dy * dy);
+        const rDx = r2.x - r1.x;
+        const rDy = r2.y - r1.y;
+        const redPixelDistance = Math.sqrt(rDx * rDx + rDy * rDy);
 
-        // 최종 실시간 결육 길이 = (빨간색 결육 픽셀 거리 / 줌 배율) * 배율
-        const currentMeasuredVal = parseFloat((((redPixelDistance / currentZoom) / scaleFactor) * referenceHeight).toFixed(2));
+        // 실시간 길이 = (결육 픽셀 거리 / 줌 배율) / 배율
+        const currentMeasuredVal = parseFloat((((redPixelDistance / currentZoom) / scaleFactor)).toFixed(2));
 
         const diff = Math.abs(currentMeasuredVal - targetLength);
         if (isCaptured) {
@@ -316,7 +325,7 @@
     function openSettings() { document.getElementById('modal').style.display = 'flex'; }
     function closeSettings() {
         targetLength = parseFloat(document.getElementById('input-target').value);
-        document.getElementById('spec-display').innerHTML = `${targetLength.toFixed(2)} mm | <span id="calc-height">0.00</span> mm`;
+        document.getElementById('spec-display').innerText = `${targetLength.toFixed(2)} mm`;
         document.getElementById('modal').style.display = 'none';
     }
 
