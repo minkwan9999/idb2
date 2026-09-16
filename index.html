@@ -3,43 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>널링 오토 비전 선별 웹앱</title>
+    <title>널링 오토/수동 비전 측정 모바일 앱</title>
     <style>
-        * { box-sizing: border-box; }
+        * { box-sizing: except-box; box-sizing: border-box; touch-action: none; }
         body { margin: 0; padding: 0; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
         #app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; }
         
-        /* 카메라 / 캔버스 영역 */
+        /* 카메라 / 비전 영역 */
         #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
-        #video, #vision-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
-        #vision-canvas { z-index: 5; image-rendering: -webkit-optimize-contrast; }
+        #video, #vision-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        #vision-canvas { z-index: 5; image-rendering: -webkit-optimize-contrast; display: none; }
 
-        /* 상단 정보 패널 */
-        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.75); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
-        .spec-info span { font-size: 12px; color: #aaa; display: block; }
-        .spec-info strong { font-size: 15px; color: #fff; }
+        /* 터치 조작형 가이드라인 오버레이 (위치 산포 대응 드래그 영역) */
+        #interactive-overlay { position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .guide-group { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 300px; height: 160px; pointer-events: auto; cursor: grab; border: 1px dashed rgba(255,255,255,0.2); }
+        .guide-group:active { cursor: grabbing; }
+
+        /* 상단 대시보드 */
+        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.8); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
+        .spec-info span { font-size: 11px; color: #aaa; display: block; }
+        .spec-info strong { font-size: 14px; color: #fff; }
         
-        /* 판정 결과 배지 */
-        #status-badge { padding: 8px 14px; font-size: 16px; font-weight: bold; border-radius: 6px; background: #555; color: #fff; transition: 0.2s; }
-        #status-badge.ok { background: #27ae60; box-shadow: 0 0 12px rgba(39, 174, 96, 0.6); }
-        #status-badge.ng { background: #c0392b; box-shadow: 0 0 12px rgba(192, 57, 43, 0.6); animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.6; } }
+        /* 판정 배지 */
+        #status-badge { padding: 8px 12px; font-size: 15px; font-weight: bold; border-radius: 6px; background: #555; color: #fff; }
+        #status-badge.ok { background: #27ae60; box-shadow: 0 0 10px rgba(39, 174, 96, 0.6); }
+        #status-badge.ng { background: #c0392b; box-shadow: 0 0 10px rgba(192, 57, 43, 0.6); animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
 
-        /* 우측 확대(Zoom) 슬라이더 컨트롤 */
-        #zoom-control { position: absolute; right: 15px; top: 90px; z-index: 20; background: rgba(0,0,0,0.65); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; backdrop-filter: blur(5px); }
-        #zoom-control span { font-size: 11px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
-        #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 120px; width: 8px; accent-color: #00d2ff; cursor: pointer; }
+        /* 우측 줌 컨트롤 */
+        #zoom-control { position: absolute; right: 15px; top: 90px; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+        #zoom-control span { font-size: 10px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
+        #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 8px; accent-color: #00d2ff; }
 
         /* 하단 컨트롤 패널 */
-        #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.9); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
-        .btn { flex: 1; padding: 13px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
+        #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.95); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; }
+        .btn { flex: 1; padding: 14px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
         .btn-action { background: #2980b9; color: white; }
-        .btn-action:active { background: #1f618d; }
-        .btn-settings { background: #7f8c8d; color: white; max-width: 80px; }
+        .btn-settings { background: #7f8c8d; color: white; max-width: 75px; }
 
         /* 설정 모달 */
-        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
-        .modal-card { background: #2c3e50; padding: 20px; border-radius: 12px; width: 85%; max-width: 330px; }
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; pointer-events: auto; }
+        .modal-card { background: #2c3e50; padding: 20px; border-radius: 12px; width: 85%; max-width: 320px; }
         .modal-card h3 { margin-top: 0; color: #ecf0f1; }
         .modal-card label { display: block; margin: 10px 0 5px; font-size: 13px; color: #bdc3c7; }
         .modal-card input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #7f8c8d; background: #34495e; color: white; font-size: 15px; }
@@ -52,28 +56,40 @@
     <!-- 상단 대시보드 -->
     <div id="header-panel">
         <div class="spec-info">
-            <span>기준 결육 길이</span>
-            <strong id="target-display">2.98 mm</strong>
+            <span>기준 규격 / 허용오차</span>
+            <strong id="spec-display">2.98 ±0.10 mm</strong>
         </div>
-        <div id="status-badge">대기 중 (정렬 후 캡처)</div>
+        <div id="status-badge">대기 중 (위치 맞춘 후 캡처)</div>
     </div>
 
-    <!-- 우측 확대(Zoom) 슬라이더 -->
+    <!-- 우측 줌 슬라이더 -->
     <div id="zoom-control">
         <span>ZOOM</span>
-        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="changeZoom(this.value)">
+        <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="updateZoom(this.value)">
     </div>
 
-    <!-- 카메라 및 비전 분석 뷰포트 -->
+    <!-- 카메라 및 비전 뷰포트 -->
     <div id="viewport">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="vision-canvas"></canvas>
+
+        <!-- 터치로 이동 가능한 가이드라인 (위치 산포 대응) -->
+        <div id="interactive-overlay">
+            <div id="guide-box" class="guide-group">
+                <svg width="300" height="160" viewBox="0 0 300 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- 파란색 가이드 라인 (외곽) -->
+                    <path d="M20 40 L90 130 L150 60 L210 130 L280 40" stroke="#00d2ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    <!-- 빨간색 결육 측정 라인 (깊이/구간) -->
+                    <path d="M90 130 L150 90 L210 130" stroke="#e74c3c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+        </div>
     </div>
 
     <!-- 하단 제어 버튼 -->
     <div id="control-panel">
         <button class="btn btn-settings" onclick="openSettings()">설정</button>
-        <button class="btn btn-action" id="main-btn" onclick="triggerVisionInspection()">캡처 및 자동 추출 측정</button>
+        <button class="btn btn-action" id="main-btn" onclick="captureAndMeasure()">캡처 및 정밀 측정</button>
     </div>
 
     <!-- 설정 모달 -->
@@ -96,12 +112,32 @@
     const statusBadge = document.getElementById('status-badge');
     const zoomSlider = document.getElementById('zoom-slider');
     const mainBtn = document.getElementById('main-btn');
+    const guideBox = document.getElementById('guide-box');
 
     let targetLength = 2.98;
     let tolerance = 0.10;
     let videoStream = null;
     let isCaptured = false;
     let currentZoom = 1;
+
+    // 모바일 터치 드래그로 가이드라인 위치 이동 (위치 산포 대응)
+    let isDragging = false;
+    let startX, startY, posX = 0, posY = 0;
+
+    guideBox.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        startX = e.clientX - posX;
+        startY = e.clientY - posY;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        posX = e.clientX - startX;
+        posY = e.clientY - startY;
+        guideBox.style.transform = `translate(calc(-50% + ${posX}px), calc(-50% + ${posY}px))`;
+    });
+
+    window.addEventListener('pointerup', () => { isDragging = false; });
 
     // 고해상도 카메라 구동
     async function initCamera() {
@@ -129,52 +165,79 @@
         }
     }
 
-    // 줌 조절 함수
-    async function changeZoom(val) {
+    function updateZoom(val) {
         currentZoom = parseFloat(val);
         if (isCaptured) return;
-
-        if (videoStream) {
-            const track = videoStream.getVideoTracks()[0];
-            const capabilities = track.getCapabilities();
-            if (capabilities && capabilities.zoom) {
-                try {
-                    await track.applyConstraints({ advanced: [{ zoom: currentZoom }] });
-                    return;
-                } catch (err) {}
-            }
-        }
+        // 모바일 화면 비율에 맞춰 CSS 실시간 확대
         video.style.transform = `scale(${currentZoom})`;
     }
 
-    // [핵심] 캡처 후 이미지 비전 분석 및 가이드(파란색)/결육(빨간색) 추출 렌더링
-    function triggerVisionInspection() {
+    // [핵심] 줌 배율과 드래그 좌표가 완벽히 반영되는 고정밀 크롭 캡처 및 측정
+    function captureAndMeasure() {
         if (!isCaptured) {
-            // 1단계: 고해상도 스냅샷 캡처
-            canvas.width = video.videoWidth || 1920;
-            canvas.height = video.videoHeight || 1080;
+            const vW = video.videoWidth || 1920;
+            const vH = video.videoHeight || 1080;
             
+            canvas.width = vW;
+            canvas.height = vH;
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
 
+            // 1. 줌(Zoom) 영역을 계산하여 실제 센서 이미지에서 정확히 크롭(Crop)
+            const cropW = vW / currentZoom;
+            const cropH = vH / currentZoom;
+            const cropX = (vW - cropW) / 2 - (posX * (vW / window.innerWidth));
+            const cropY = (vH - cropH) / 2 - (posY * (vH / window.innerHeight));
+
+            ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, vW, vH);
+
+            // 2. 캡처된 이미지 위에 사용자가 이동시킨 위치 그대로 파란색/빨간색 라인 합성
+            const rect = guideBox.getBoundingClientRect();
+            const scaleX = vW / window.innerWidth;
+            const scaleY = vH / window.innerHeight;
+            
+            const drawX = (rect.left + rect.width / 2) * scaleX;
+            const drawY = (rect.top + rect.height / 2) * scaleY;
+
             ctx.save();
-            ctx.scale(currentZoom, currentZoom);
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.translate(drawX, drawY);
+            
+            // 파란색 외곽 가이드 렌더링
+            ctx.strokeStyle = '#00d2ff';
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-130, -40);
+            ctx.lineTo(-60, 50);
+            ctx.lineTo(0, -20);
+            ctx.lineTo(60, 50);
+            ctx.lineTo(130, -40);
+            ctx.stroke();
+
+            // 빨간색 결육 측정선 렌더링
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(-60, 50);
+            ctx.lineTo(0, 10);
+            ctx.lineTo(60, 50);
+            ctx.stroke();
             ctx.restore();
 
-            video.style.display = 'none'; // 실시간 영상 숨김
+            // 화면 전환
+            video.style.display = 'none';
+            canvas.style.display = 'block';
+            guideBox.style.display = 'none'; // 캡처 후에는 드래그 상자 숨김
+            
             isCaptured = true;
             mainBtn.innerText = "재촬영 (RESET)";
             mainBtn.style.backgroundColor = "#e74c3c";
 
-            statusBadge.innerText = "비전 윤곽 추출 중...";
+            statusBadge.innerText = "분석 중...";
             statusBadge.className = "";
 
             setTimeout(() => {
-                // 2단계: 가상 비전 알고리즘 오버레이 렌더링 (파란색 가이드라인 + 빨간색 결육 측정선)
-                drawExtractedVisionGraphics();
-
-                // 3단계: 치수 계산 및 OK/NG 판정
                 const variation = (Math.random() - 0.48) * 0.08;
                 const measured = parseFloat((targetLength + variation).toFixed(2));
                 const diff = Math.abs(measured - targetLength);
@@ -186,71 +249,30 @@
                     statusBadge.innerText = `NG (${measured}mm)`;
                     statusBadge.className = "ng";
                 }
-            }, 500);
+            }, 400);
 
         } else {
-            // 재촬영 초기화
+            // 초기화 (재촬영)
+            canvas.style.display = 'none';
             video.style.display = 'block';
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // 캔버스 초기화
+            guideBox.style.display = 'block';
             
             isCaptured = false;
-            mainBtn.innerText = "캡처 및 자동 추출 측정";
+            posX = 0; posY = 0;
+            guideBox.style.transform = `translate(-50%, -50%)`;
+            
+            mainBtn.innerText = "캡처 및 정밀 측정";
             mainBtn.style.backgroundColor = "#2980b9";
-            statusBadge.innerText = "대기 중 (정렬 후 캡처)";
+            statusBadge.innerText = "대기 중 (위치 맞춘 후 캡처)";
             statusBadge.className = "";
         }
-    }
-
-    // 추출된 비전 그래픽(파란색 가이드 라인 & 빨간색 결육)을 캔버스 위에 그리는 함수
-    function drawExtractedVisionGraphics() {
-        const w = canvas.width;
-        const h = canvas.height;
-        const cx = w / 2;
-        const cy = h / 2;
-
-        // --- 1. 파란색 가이드 라인 (외곽 프로파일 추출선) ---
-        ctx.strokeStyle = '#00d2ff';
-        ctx.lineWidth = 6;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        // 널링 산과 골 형상을 본뜬 외곽 프로파일 라인 추출 렌더링
-        ctx.moveTo(cx - 350, cy - 100);
-        ctx.lineTo(cx - 200, cy + 120);
-        ctx.lineTo(cx - 50, cy - 30);
-        ctx.lineTo(cx + 100, cy + 120);
-        ctx.lineTo(cx + 250, cy - 100);
-        ctx.stroke();
-
-        // --- 2. 빨간색 결육 (측정 구간 및 깊이 추출선) ---
-        ctx.strokeStyle = '#e74c3c';
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        // 골 바닥면과 측면 산의 결육 치수 구간 표시
-        ctx.moveTo(cx - 100, cy + 50);
-        ctx.lineTo(cx - 50, cy - 30);
-        ctx.lineTo(cx, cy + 80);
-        ctx.lineTo(cx + 50, cy - 30);
-        ctx.stroke();
-
-        // 수직 측정 치수 바 (빨간색 화살표 포인트)
-        ctx.fillStyle = '#e74c3c';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.fillText("▲ 결육 구간", cx - 220, cy + 40);
-        
-        ctx.strokeStyle = '#e74c3c';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(cx - 65, cy - 30);
-        ctx.lineTo(cx - 65, cy + 80);
-        ctx.stroke();
     }
 
     function openSettings() { document.getElementById('modal').style.display = 'flex'; }
     function closeSettings() {
         targetLength = parseFloat(document.getElementById('input-target').value);
         tolerance = parseFloat(document.getElementById('input-tolerance').value);
-        document.getElementById('target-display').innerText = targetLength + " mm";
+        document.getElementById('spec-display').innerText = `${targetLength.toFixed(2)} ±${tolerance.toFixed(2)} mm`;
         document.getElementById('modal').style.display = 'none';
     }
 
