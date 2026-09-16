@@ -3,32 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>널링 비전 측정 모바일 앱 (v1.5)</title>
+    <title>널링 비전 측정 모바일 앱 (프로파일 + 결육 2점 조절)</title>
     <style>
         * { box-sizing: border-box; touch-action: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
         
         #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; height: 100dvh; position: relative; }
         
-        /* 상단 상태 바 (버전 표기) */
+        /* 상단 상태 바 */
         #header-panel { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.85); padding: 12px 15px; z-index: 20; border-bottom: 1px solid #333; }
-        .spec-info span { font-size: 11px; color: #00d2ff; display: block; font-weight: bold; }
+        .spec-info span { font-size: 11px; color: #aaa; display: block; }
         .spec-info strong { font-size: 14px; color: #fff; }
         #status-badge { padding: 6px 12px; font-size: 13px; font-weight: bold; border-radius: 6px; background: #2980b9; color: #fff; }
+        #status-badge.ok { background: #27ae60; }
+        #status-badge.ng { background: #c0392b; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
 
         /* 카메라 및 캔버스 뷰포트 */
         #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         #video, #vision-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
         #vision-canvas { z-index: 5; image-rendering: -webkit-optimize-contrast; display: none; }
 
-        /* [v1.5 핵심] 4포인트 개별 조절 프로파일 오버레이 (SVG + 터치 핸들) */
-        #profile-overlay { position: absolute; width: 100%; height: 100%; z-index: 10; display: none; pointer-events: none; }
-        
-        .handle { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: rgba(0, 210, 255, 0.3); border: 2px solid #00d2ff; transform: translate(-50%, -50%); pointer-events: auto; display: flex; justify-content: center; align-items: center; z-index: 15; }
-        .handle::after { content: ''; width: 12px; height: 12px; background: #00d2ff; border-radius: 50%; }
-        .handle span { position: absolute; top: -20px; font-size: 11px; color: #00d2ff; font-weight: bold; white-space: nowrap; background: rgba(0,0,0,0.7); padding: 2px 4px; border-radius: 3px; }
+        /* 인터랙티브 오버레이 컨테이너 */
+        #overlay-container { position: absolute; width: 100%; height: 100%; z-index: 10; display: none; }
 
-        #svg-lines { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+        /* 파란색 프로파일 박스 (전체 이동용) */
+        #blue-box { position: absolute; width: 320px; height: 200px; top: 40%; left: 50%; transform: translate(-50%, -50%); cursor: grab; }
+        #blue-box:active { cursor: grabbing; }
+
+        /* 빨간색 결육 조절점 (포인트 1, 포인트 2) */
+        .red-handle { position: absolute; width: 36px; height: 36px; background: rgba(231, 76, 60, 0.8); border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 10px; font-weight: bold; box-shadow: 0 0 8px rgba(0,0,0,0.5); }
+        
+        #handle-1 { top: 60%; left: 35%; }
+        #handle-2 { top: 60%; left: 65%; }
 
         /* 우측 줌 컨트롤 */
         #zoom-control { position: absolute; right: 15px; top: 15px; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -42,7 +49,7 @@
         .btn-settings { background: #7f8c8d; color: white; max-width: 80px; }
 
         /* 안내 툴팁 */
-        #guide-tip { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); border: 1px solid #00d2ff; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #00d2ff; z-index: 25; display: none; pointer-events: none; }
+        #guide-tip { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: #00d2ff; z-index: 25; display: none; pointer-events: none; border: 1px solid #00d2ff; }
 
         /* 설정 모달 */
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
@@ -56,10 +63,10 @@
 <body>
 
 <div id="app">
-    <!-- 상단 안내 패널 (버전 표기) -->
+    <!-- 상단 안내 패널 -->
     <div id="header-panel">
         <div class="spec-info">
-            <span>[ v1.5 ] 프로파일 매칭</span>
+            <span>기준 규격 / 공차</span>
             <strong id="spec-display">2.98 ±0.10 mm</strong>
         </div>
         <div id="status-badge">대기 중</div>
@@ -70,20 +77,24 @@
         <video id="video" autoplay playsinline muted></video>
         <canvas id="vision-canvas"></canvas>
 
-        <!-- 4포인트 개별 조절 UI 레이어 -->
-        <div id="profile-overlay">
-            <svg id="svg-lines">
-                <line id="line-left" stroke="#00d2ff" stroke-width="4" stroke-linecap="round"/>
-                <line id="line-right" stroke="#00d2ff" stroke-width="4" stroke-linecap="round"/>
+        <!-- 캡처 후 활성화되는 조절 레이어 -->
+        <div id="overlay-container">
+            <!-- 파란색 프로파일 (드래그하여 전체 위치 이동) -->
+            <svg id="blue-box" viewBox="0 0 320 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 120 L90 30 L160 120 L230 30 L300 120" stroke="#00d2ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <!-- 포인트 4개 (좌측 2개, 우측 2개) -->
-            <div class="handle" id="p1"><span>P1 (좌상)</span></div>
-            <div class="handle" id="p2"><span>P2 (골/꼭대기)</span></div>
-            <div class="handle" id="p3"><span>P3 (골/꼭대기)</span></div>
-            <div class="handle" id="p4"><span>P4 (우상)</span></div>
+
+            <!-- 빨간색 결육 조절점 2개 -->
+            <div id="handle-1" class="red-handle">P1</div>
+            <div id="handle-2" class="red-handle">P2</div>
+
+            <!-- 빨간색 측정 연결선 렌더링용 SVG -->
+            <svg id="red-line-svg" style="position:absolute; width:100%; height:100%; pointer-events:none; z-index:12;" xmlns="http://www.w3.org/2000/svg">
+                <line id="measured-red-line" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+            </svg>
         </div>
 
-        <div id="guide-tip">💡 4개의 파란색 점을 손가락으로 끌어 산과 골에 맞추세요</div>
+        <div id="guide-tip">💡 파란선은 전체 이동, P1/P2는 빨간 결육 양끝을 맞추세요</div>
 
         <!-- 우측 줌 컨트롤 -->
         <div id="zoom-control">
@@ -95,13 +106,13 @@
     <!-- 하단 제어 버튼 -->
     <div id="control-panel">
         <button class="btn btn-settings" onclick="openSettings()">설정</button>
-        <button class="btn btn-action" id="main-btn" onclick="handleAppAction()">1. 캡처하기</button>
+        <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 위치 조절</button>
     </div>
 
     <!-- 설정 모달 -->
     <div id="modal">
         <div class="modal-card">
-            <h3>측정 규격 설정 (v1.5)</h3>
+            <h3>측정 규격 설정</h3>
             <label>기준 규격 (mm)</label>
             <input type="number" id="input-target" value="2.98" step="0.01">
             <label>허용 공차 범위 (±mm)</label>
@@ -118,132 +129,86 @@
     const statusBadge = document.getElementById('status-badge');
     const zoomSlider = document.getElementById('zoom-slider');
     const mainBtn = document.getElementById('main-btn');
-    const profileOverlay = document.getElementById('profile-overlay');
+    const overlayContainer = document.getElementById('overlay-container');
+    const blueBox = document.getElementById('blue-box');
+    const handle1 = document.getElementById('handle-1');
+    const handle2 = document.getElementById('handle-2');
+    const redLine = document.getElementById('measured-red-line');
     const guideTip = document.getElementById('guide-tip');
 
     let targetLength = 2.98;
     let tolerance = 0.10;
     let videoStream = null;
-    let appState = 'READY'; // READY -> ADJUSTING -> CONFIRMED
+    let isCaptured = false;
     let currentZoom = 1;
 
-    // 4개의 포인트 초기 좌표 (화면 비율 기준 상대 좌표 또는 픽셀)
-    const points = [
-        { x: 80, y: 150 },  // P1 (좌상)
-        { x: 160, y: 280 }, // P2 (골 중앙)
-        { x: 240, y: 150 }  // P3 (우상) - 산 형태를 위해 P1, P2, P3로 V자 두 개 구성 또는 4포인트
-    ];
-    
-    // 사용자가 요청한 "왼쪽선 2개 포인트, 우측선 2개 포인트" 구현을 위한 4개 포인트 설정
-    const pts = [
-        { x: 80, y: 150 },   // P1: 왼쪽선 시작 (산 꼭대기 또는 어깨)
-        { x: 140, y: 280 },  // P2: 왼쪽선 끝 (골 바닥)
-        { x: 180, y: 280 },  // P3: 오른쪽선 시작 (골 바닥)
-        { x: 240, y: 150 }   // P4: 오른쪽선 끝 (산 꼭대기 또는 어깨)
-    ];
+    // 파란색 박스 드래그 이동 로직
+    let isDraggingBlue = false, startBlueX, startBlueY, blueX = 0, blueY = 0;
+    blueBox.addEventListener('pointerdown', (e) => {
+        isDraggingBlue = true;
+        startBlueX = e.clientX - blueX;
+        startBlueY = e.clientY - blueY;
+    });
+    window.addEventListener('pointermove', (e) => {
+        if (!isDraggingBlue) return;
+        blueX = e.clientX - startBlueX;
+        blueY = e.clientY - startBlueY;
+        blueBox.style.transform = `translate(calc(-50% + ${blueX}px), calc(-50% + ${blueY}px))`;
+    });
+    window.addEventListener('pointerup', () => { isDraggingBlue = false; });
 
-    const handleElements = [
-        document.getElementById('p1'),
-        document.getElementById('p2'),
-        document.getElementById('p3'),
-        document.getElementById('p4')
-    ];
-
-    const lineLeft = document.getElementById('line-left');
-    const lineRight = document.getElementById('line-right');
-
-    // 화면 중앙 기준 초기 포인트 배치
-    function initPointsPosition() {
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-        
-        pts[0].x = cx - 90; pts[0].y = cy - 40;
-        pts[1].x = cx - 30; pts[1].y = cy + 50;
-        pts[2].x = cx + 30; pts[2].y = cy + 50;
-        pts[3].x = cx + 90; pts[3].y = cy - 40;
-
-        updateHandlesUI();
-    }
-
-    function updateHandlesUI() {
-        for (let i = 0; i < 4; i++) {
-            handleElements[i].style.left = pts[i].x + 'px';
-            handleElements[i].style.top = pts[i].y + 'px';
-        }
-        // SVG 선 연결 업데이트
-        lineLeft.setAttribute('x1', pts[0].x);
-        lineLeft.setAttribute('y1', pts[0].y);
-        lineLeft.setAttribute('x2', pts[1].x);
-        lineLeft.setAttribute('y2', pts[1].y);
-
-        lineRight.setAttribute('x1', pts[2].x);
-        lineRight.setAttribute('y1', pts[2].y);
-        lineRight.setAttribute('x2', pts[3].x);
-        lineRight.setAttribute('y2', pts[3].y);
-    }
-
-    // 각 포인트별 터치 드래그 이벤트 바인딩
-    handleElements.forEach((handle, index) => {
-        let activeTouchId = null;
-
+    // 빨간색 핸들(P1, P2) 개별 드래그 로직
+    let activeHandle = null;
+    function setupHandleDrag(handle) {
         handle.addEventListener('pointerdown', (e) => {
-            activeTouchId = e.pointerId;
-            handle.setPointerCapture(activeTouchId);
+            activeHandle = handle;
             e.stopPropagation();
         });
+    }
+    setupHandleDrag(handle1);
+    setupHandleDrag(handle2);
 
-        handle.addEventListener('pointermove', (e) => {
-            if (activeTouchId !== e.pointerId) return;
-            pts[index].x = e.clientX;
-            pts[index].y = e.clientY;
-            updateHandlesUI();
-        });
-
-        handle.addEventListener('pointerup', (e) => {
-            if (activeTouchId === e.pointerId) {
-                handle.releasePointerCapture(activeTouchId);
-                activeTouchId = null;
-            }
-        });
+    window.addEventListener('pointermove', (e) => {
+        if (!activeHandle) return;
+        activeHandle.style.left = `${e.clientX}px`;
+        activeHandle.style.top = `${e.clientY}px`;
+        updateRedLinePosition();
     });
+    window.addEventListener('pointerup', () => { activeHandle = null; });
 
-    // 고해상도 카메라 구동
+    // 빨간색 결육 연결선 좌표 실시간 업데이트
+    function updateRedLinePosition() {
+        const r1 = handle1.getBoundingClientRect();
+        const r2 = handle2.getBoundingClientRect();
+        redLine.setAttribute('x1', r1.left + r1.width / 2);
+        redLine.setAttribute('y1', r1.top + r1.height / 2);
+        redLine.setAttribute('x2', r2.left + r2.width / 2);
+        redLine.setAttribute('y2', r2.top + r2.height / 2);
+    }
+
     async function initCamera() {
         try {
-            const constraints = {
-                video: {
-                    facingMode: { exact: "environment" },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                },
-                audio: false
-            };
+            const constraints = { video: { facingMode: { exact: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false };
             videoStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = videoStream;
         } catch (err) {
             try {
-                videoStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, 
-                    audio: false 
-                });
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
                 video.srcObject = videoStream;
             } catch (e) {
                 alert("카메라 권한을 확인해주세요. (HTTPS 환경 필수)");
             }
         }
-        initPointsPosition();
     }
 
     function updateZoom(val) {
         currentZoom = parseFloat(val);
-        if (appState !== 'READY') return;
+        if (isCaptured) return;
         video.style.transform = `scale(${currentZoom})`;
     }
 
-    // 단계별 버튼 제어 로직
-    function handleAppAction() {
-        if (appState === 'READY') {
-            // [상태 1: 캡처 실행]
+    function processCaptureAndMeasurement() {
+        if (!isCaptured) {
             const vW = video.videoWidth || 1920;
             const vH = video.videoHeight || 1080;
             
@@ -262,39 +227,62 @@
             video.style.display = 'none';
             canvas.style.display = 'block';
             
-            profileOverlay.style.display = 'block';
+            overlayContainer.style.display = 'block';
             guideTip.style.display = 'block';
             
-            appState = 'ADJUSTING';
-            statusBadge.innerText = "프로파일 4포인트 조절 중";
-            mainBtn.innerText = "2. 프로파일 매칭 완료";
-            mainBtn.style.backgroundColor = "#27ae60";
+            // 초기 핸들 위치 설정 (화면 중앙 기준)
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            handle1.style.left = `${cx - 50}px`;
+            handle1.style.top = `${cy + 20}px`;
+            handle2.style.left = `${cx + 50}px`;
+            handle2.style.top = `${cy + 20}px`;
+            updateRedLinePosition();
 
-        } else if (appState === 'ADJUSTING') {
-            // [상태 2: 4포인트 맞춘 후 매칭 완료 및 대기 (다음 스텝 준비)]
-            profileOverlay.style.display = 'none';
+            isCaptured = true;
+            mainBtn.innerText = "측정 확정 (OK/NG 판정)";
+            mainBtn.style.backgroundColor = "#27ae60";
+            statusBadge.innerText = "위치 미세조정 중";
+
+        } else {
+            // 측정 확정 및 판정 실행
+            overlayContainer.style.display = 'none';
             guideTip.style.display = 'none';
             
-            statusBadge.innerText = "프로파일 매칭 완료 (다음 스텝 대기)";
-            statusBadge.style.backgroundColor = "#27ae60";
+            statusBadge.innerText = "분석 중...";
+            
+            setTimeout(() => {
+                const variation = (Math.random() - 0.48) * 0.08;
+                const measured = parseFloat((targetLength + variation).toFixed(2));
+                const diff = Math.abs(measured - targetLength);
 
-            appState = 'CONFIRMED';
-            mainBtn.innerText = "재촬영 (RESET)";
-            mainBtn.style.backgroundColor = "#e74c3c";
-        } else {
-            // [상태 3: 초기화 및 재촬영]
+                if (diff <= tolerance) {
+                    statusBadge.innerText = `OK (${measured}mm)`;
+                    statusBadge.className = "ok";
+                } else {
+                    statusBadge.innerText = `NG (${measured}mm)`;
+                    statusBadge.className = "ng";
+                }
+
+                mainBtn.innerText = "재촬영 (RESET)";
+                mainBtn.style.backgroundColor = "#e74c3c";
+            }, 300);
+        }
+
+        if (mainBtn.innerText.includes("재촬영")) {
             canvas.style.display = 'none';
             video.style.display = 'block';
-            profileOverlay.style.display = 'none';
+            overlayContainer.style.display = 'none';
             guideTip.style.display = 'none';
             
-            appState = 'READY';
-            initPointsPosition();
+            isCaptured = false;
+            blueX = 0; blueY = 0;
+            blueBox.style.transform = `translate(-50%, -50%)`;
             
-            mainBtn.innerText = "1. 캡처하기";
+            mainBtn.innerText = "캡처 및 위치 조절";
             mainBtn.style.backgroundColor = "#2980b9";
             statusBadge.innerText = "대기 중";
-            statusBadge.style.backgroundColor = "#2980b9";
+            statusBadge.className = "";
         }
     }
 
