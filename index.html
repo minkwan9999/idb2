@@ -41,9 +41,6 @@
         #handle-r1 { top: 65%; left: 42%; }
         #handle-r2 { top: 65%; left: 58%; }
 
-        /* 실시간 길이 수치 플로팅 배지 */
-        #live-dimension-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.85); border: 2px solid #e74c3c; padding: 6px 14px; border-radius: 20px; font-size: 16px; font-weight: bold; color: #fff; z-index: 16; pointer-events: none; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-
         /* 우측 줌 컨트롤 (맥스 디폴트) */
         #zoom-control { position: absolute; right: 15px; top: 15px; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; }
         #zoom-control span { font-size: 10px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
@@ -76,7 +73,7 @@
     <div id="header-panel">
         <div class="spec-info">
             <span>기준 규격 / 공차</span>
-            <strong id="spec-display">2.98 ±0.10 mm</strong>
+            <strong id="spec-display">2.98 ±0.30 mm</strong>
         </div>
         <div id="status-badge">대기 중</div>
     </div>
@@ -98,9 +95,6 @@
             <div id="handle-b2" class="handle blue-handle">B2</div>
             <div id="handle-r1" class="handle red-handle">R1</div>
             <div id="handle-r2" class="handle red-handle">R2</div>
-
-            <!-- 실시간 길이 수치 플로팅 배지 -->
-            <div id="live-dimension-badge">0.00 mm</div>
         </div>
 
         <div id="guide-tip">💡 빨간점(R1, R2)을 움직이면 길이가 실시간으로 계산됩니다</div>
@@ -128,7 +122,7 @@
             <label>기준 규격 (mm)</label>
             <input type="number" id="input-target" value="2.98" step="0.01">
             <label>허용 공차 범위 (±mm)</label>
-            <input type="number" id="input-tolerance" value="0.10" step="0.01">
+            <input type="number" id="input-tolerance" value="0.30" step="0.01">
             <button onclick="closeSettings()">저장 및 적용</button>
         </div>
     </div>
@@ -151,13 +145,12 @@
     const lineBlue = document.getElementById('line-blue');
     const lineRed = document.getElementById('line-red');
     const guideTip = document.getElementById('guide-tip');
-    const liveBadge = document.getElementById('live-dimension-badge');
 
     let targetLength = 2.98;
-    let tolerance = 0.10;
+    let tolerance = 0.30;
     let videoStream = null;
     let isCaptured = false;
-    let currentZoom = 4; // 요구사항: 줌 맥스 디폴트
+    let currentZoom = 4;
 
     let pixelToMmRatio = 0.05;
 
@@ -207,20 +200,14 @@
         
         const currentMeasuredVal = parseFloat(((pixelDistance / currentZoom) * pixelToMmRatio).toFixed(2));
 
-        liveBadge.style.left = `${(r1.x + r2.x) / 2}px`;
-        liveBadge.style.top = `${(r1.y + r2.y) / 2 - 30}px`;
-        liveBadge.innerText = `${currentMeasuredVal} mm`;
-
         const diff = Math.abs(currentMeasuredVal - targetLength);
         if (isCaptured) {
             if (diff <= tolerance) {
-                statusBadge.innerText = `실시간: OK (${currentMeasuredVal}mm)`;
+                statusBadge.innerText = `OK (${currentMeasuredVal}mm)`;
                 statusBadge.className = "ok";
-                liveBadge.style.borderColor = "#27ae60";
             } else {
-                statusBadge.innerText = `실시간: NG (${currentMeasuredVal}mm)`;
+                statusBadge.innerText = `NG (${currentMeasuredVal}mm)`;
                 statusBadge.className = "ng";
-                liveBadge.style.borderColor = "#e74c3c";
             }
         }
     }
@@ -238,7 +225,6 @@
                 alert("카메라 권한을 확인해주세요. (HTTPS 환경 필수)");
             }
         }
-        // 초기 줌을 맥스(4)로 적용
         zoomSlider.value = 4;
         updateZoom(4);
     }
@@ -271,7 +257,6 @@
             
             overlayContainer.style.display = 'block';
             guideTip.style.display = 'block';
-            liveBadge.style.display = 'block';
             
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
@@ -290,7 +275,6 @@
         } else {
             overlayContainer.style.display = 'none';
             guideTip.style.display = 'none';
-            liveBadge.style.display = 'none';
             
             mainBtn.innerText = "재촬영 (RESET)";
             mainBtn.style.backgroundColor = "#e74c3c";
@@ -301,7 +285,6 @@
             video.style.display = 'block';
             overlayContainer.style.display = 'none';
             guideTip.style.display = 'none';
-            liveBadge.style.display = 'none';
             
             isCaptured = false;
             mainBtn.innerText = "캡처 및 포인트 조절";
