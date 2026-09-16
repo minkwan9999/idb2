@@ -3,636 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>스마트 불량선별 및 측정기 (Defect Inspector)</title>
-    <!-- Tailwind CSS for modern responsive styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>널링 불량선별 및 구간 측정 웹앱</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap');
-        body {
-            font-family: 'Pretendard', sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
-            touch-action: manipulation;
-            overflow-x: hidden;
-        }
-        /* Custom ranges and sliders */
-        input[type=range] {
-            accent-color: #3b82f6;
-        }
-        /* Pulse animation for NG alert */
-        @keyframes pulse-red {
-            0%, 100% { border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.6); }
-            50% { border-color: rgba(239, 68, 68, 0.3); box-shadow: 0 0 5px rgba(239, 68, 68, 0.2); }
-        }
-        @keyframes pulse-green {
-            0%, 100% { border-color: rgba(34, 197, 94, 1); box-shadow: 0 0 20px rgba(34, 197, 94, 0.6); }
-            50% { border-color: rgba(34, 197, 94, 0.3); box-shadow: 0 0 5px rgba(34, 197, 94, 0.2); }
-        }
-        .status-ok {
-            animation: pulse-green 1.5s infinite;
-        }
-        .status-ng {
-            animation: pulse-red 1.5s infinite;
-        }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
+        #app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; }
+        
+        /* 카메라 / 비디오 영역 */
+        #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        
+        /* 오버레이 캔버스 (파란색 가이드 + 빨간색 측정선) */
+        #overlay-canvas { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        /* 상단 정보 패널 */
+        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
+        .spec-info span { font-size: 12px; color: #aaa; display: block; }
+        .spec-info strong { font-size: 15px; color: #fff; }
+        
+        /* 판정 결과 배지 */
+        #status-badge { padding: 8px 14px; font-size: 16px; font-weight: bold; border-radius: 6px; background: #555; color: #fff; transition: 0.2s; }
+        #status-badge.ok { background: #27ae60; box-shadow: 0 0 12px rgba(39, 174, 96, 0.6); }
+        #status-badge.ng { background: #c0392b; box-shadow: 0 0 12px rgba(192, 57, 43, 0.6); animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.6; } }
+
+        /* 하단 컨트롤 패널 */
+        #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.85); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
+        .btn { flex: 1; padding: 12px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
+        .btn-capture { background: #e74c3c; color: white; }
+        .btn-capture:active { background: #c0392b; }
+        .btn-settings { background: #7f8c8d; color: white; max-width: 80px; }
+
+        /* 설정 모달 */
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
+        .modal-card { background: #2c3e50; padding: 20px; border-radius: 12px; width: 85%; max-width: 330px; }
+        .modal-card h3 { margin-top: 0; color: #ecf0f1; }
+        .modal-card label { display: block; margin: 10px 0 5px; font-size: 13px; color: #bdc3c7; }
+        .modal-card input { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #7f8c8d; background: #34495e; color: white; font-size: 15px; }
+        .modal-card button { width: 100%; margin-top: 15px; background: #27ae60; color: white; padding: 10px; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
-<body class="flex flex-col min-h-screen">
+<body>
 
-    <header class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 py-3 sticky top-0 z-50 flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-            <div class="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-500/30">
-                <i class="fa-solid fa-microscope text-lg"></i>
-            </div>
-            <div>
-                <h1 class="font-bold text-base leading-tight">스마트 비전 측정</h1>
-                <p class="text-xs text-slate-400">실시간 불량 선별 시스템 v1.0</p>
-            </div>
+<div id="app">
+    <!-- 상단 대시보드 -->
+    <div id="header-panel">
+        <div class="spec-info">
+            <span>빨간색 구간 기준치</span>
+            <strong id="target-display">0.85 mm</strong>
         </div>
-        <div class="flex items-center space-x-2">
-            <button id="btnToggleSettings" class="bg-slate-800 hover:bg-slate-700 p-2.5 rounded-xl text-slate-300 transition text-sm flex items-center space-x-1 border border-slate-700">
-                <i class="fa-solid fa-sliders"></i>
-                <span class="hidden sm:inline">설정</span>
-            </button>
-            <button id="btnFullscreen" class="bg-slate-800 hover:bg-slate-700 p-2.5 rounded-xl text-slate-300 transition text-sm border border-slate-700">
-                <i class="fa-solid fa-expand"></i>
-            </button>
-        </div>
-    </header>
-
-    <main class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
-        
-        <!-- Camera Screen & Overlay Container -->
-        <div class="flex-1 relative flex items-center justify-center bg-black min-h-[55vh] lg:min-h-full overflow-hidden" id="cameraContainer">
-            
-            <!-- Video element for live camera feed -->
-            <video id="webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
-            
-            <!-- Canvas for measurement overlays and snapshot capture -->
-            <canvas id="overlayCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
-
-            <!-- Fallback state when camera is inactive -->
-            <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 p-6 text-center z-20">
-                <div class="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center text-blue-500 mb-4 border border-slate-800 shadow-xl">
-                    <i class="fa-solid fa-camera text-3xl"></i>
-                </div>
-                <h2 class="text-lg font-bold mb-2">카메라 연결 대기 중</h2>
-                <p class="text-slate-400 text-xs sm:text-sm max-w-sm mb-6">스마트폰 카메라 권한을 허용하고 측정을 시작하세요. 후면 카메라가 자동으로 권장됩니다.</p>
-                <button id="btnStartCamera" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center space-x-2">
-                    <i class="fa-solid fa-play"></i>
-                    <span>카메라 시작하기</span>
-                </button>
-            </div>
-
-            <!-- Focus indicator ring on touch -->
-            <div id="focusRing" class="absolute w-16 h-16 border-2 border-yellow-400 rounded-full pointer-events-none transform -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-300 z-30 flex items-center justify-center">
-                <div class="w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
-            </div>
-
-            <!-- Floating Status Banner (Top) -->
-            <div id="statusBanner" class="absolute top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-3 rounded-2xl shadow-2xl z-30 flex items-center justify-between transition-all duration-300">
-                <div class="flex items-center space-x-3">
-                    <div id="statusIconBox" class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 font-bold transition-colors">
-                        <i class="fa-solid fa-circle-question"></i>
-                    </div>
-                    <div>
-                        <div class="text-xs text-slate-400">판정 결과</div>
-                        <div id="statusText" class="text-base font-bold text-slate-200">측정 대기중</div>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <div class="text-xs text-slate-400">측정 길이</div>
-                    <div id="measuredValueDisplay" class="text-lg font-mono font-bold text-blue-400">0.0 mm</div>
-                </div>
-            </div>
-
-            <!-- Floating Zoom Quick Bar (Right Side) -->
-            <div class="absolute right-4 bottom-24 flex flex-col space-y-2 z-30 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700 shadow-xl">
-                <button id="btnZoomIn" class="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-xl flex items-center justify-center text-slate-200 transition">
-                    <i class="fa-solid fa-magnifying-glass-plus"></i>
-                </button>
-                <div class="text-center font-mono text-xs text-slate-400 py-1" id="zoomLevelDisplay">1.0x</div>
-                <button id="btnZoomOut" class="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-xl flex items-center justify-center text-slate-200 transition">
-                    <i class="fa-solid fa-magnifying-glass-minus"></i>
-                </button>
-            </div>
-
-            <!-- Quick Action Bottom Bar over Camera -->
-            <div class="absolute bottom-4 left-4 right-4 flex items-center justify-center space-x-3 z-30">
-                <button id="btnCapture" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3.5 px-6 rounded-2xl shadow-xl shadow-blue-600/30 transition flex items-center justify-center space-x-2">
-                    <i class="fa-solid fa-camera-retro"></i>
-                    <span>측정 및 캡처</span>
-                </button>
-                <button id="btnSwitchCamera" class="bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-semibold p-3.5 rounded-2xl border border-slate-700 shadow-xl transition flex items-center justify-center">
-                    <i class="fa-solid fa-rotate"></i>
-                </button>
-            </div>
-        </div>
-
-        <aside id="controlSidebar" class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 p-5 flex flex-col space-y-5 overflow-y-auto max-h-[45vh] lg:max-h-none">
-            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-                <h2 class="font-bold text-sm uppercase tracking-wider text-slate-400 flex items-center space-x-2">
-                    <i class="fa-solid fa-gear text-blue-500"></i>
-                    <span>검사 기준 및 설정</span>
-                </h2>
-                <span class="text-xs bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-full font-medium border border-blue-500/20">실시간 모드</span>
-            </div>
-
-            <!-- Part Selection -->
-            <div class="space-y-2">
-                <label class="text-xs font-semibold text-slate-300">검사 부품 선택</label>
-                <select id="partSelector" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 text-slate-200 transition">
-                    <option value="bolt">볼트 (기준: 20.0mm)</option>
-                    <option value="pcb">PCB 패턴폭 (기준: 5.0mm)</option>
-                    <option value="pin">커넥터 핀 (기준: 10.0mm)</option>
-                    <option value="custom">사용자 정의 검사</option>
-                </select>
-            </div>
-
-            <!-- Standard Dimensions & Tolerance -->
-            <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-1.5">
-                    <label class="text-xs font-semibold text-slate-300">목표 기준치 (mm)</label>
-                    <input type="number" id="targetSize" value="20.0" step="0.1" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-blue-500">
-                </div>
-                <div class="space-y-1.5">
-                    <label class="text-xs font-semibold text-slate-300">허용 오차 (± mm)</label>
-                    <input type="number" id="toleranceSize" value="0.5" step="0.05" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-blue-500">
-                </div>
-            </div>
-
-            <!-- Calibration Slider (Pixel-to-mm scale ratio) -->
-            <div class="space-y-2 bg-slate-800/50 p-4 rounded-2xl border border-slate-800">
-                <div class="flex justify-between items-center text-xs">
-                    <span class="font-semibold text-slate-300">픽셀 보정 배율 (캘리브레이션)</span>
-                    <span id="calibrationVal" class="font-mono text-blue-400">1.00 px/mm</span>
-                </div>
-                <input type="range" id="calibrationRange" min="0.5" max="3.0" step="0.01" value="1.0" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
-                <p class="text-[11px] text-slate-500">지정된 가이드라인 안의 실제 부품 크기에 맞게 보정률을 조절하세요.</p>
-            </div>
-
-            <!-- Guide Line Type Switcher -->
-            <div class="space-y-2">
-                <label class="text-xs font-semibold text-slate-300">측정 가이드라인 모양</label>
-                <div class="grid grid-cols-3 gap-2">
-                    <button data-guide="box" class="guide-btn bg-blue-600 text-white text-xs py-2.5 rounded-xl font-medium transition border border-blue-500">박스형</button>
-                    <button data-guide="line" class="guide-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition border border-slate-700">평행선형</button>
-                    <button data-guide="cross" class="guide-btn bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition border border-slate-700">십자형</button>
-                </div>
-            </div>
-
-            <!-- Statistics Counter -->
-            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3 mt-auto">
-                <div class="flex items-center justify-between text-xs font-semibold text-slate-400">
-                    <span>검사 통계 요약</span>
-                    <button id="btnResetStats" class="text-slate-500 hover:text-slate-300 underline">초기화</button>
-                </div>
-                <div class="grid grid-cols-3 gap-2 text-center">
-                    <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-                        <div class="text-[10px] text-slate-400">총 검사</div>
-                        <div id="statTotal" class="text-base font-bold text-slate-200">0</div>
-                    </div>
-                    <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-                        <div class="text-[10px] text-green-400 font-medium">OK 합격</div>
-                        <div id="statOk" class="text-base font-bold text-green-400">0</div>
-                    </div>
-                    <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
-                        <div class="text-[10px] text-red-400 font-medium">NG 불량</div>
-                        <div id="statNg" class="text-base font-bold text-red-400">0</div>
-                    </div>
-                </div>
-            </div>
-        </aside>
-    </main>
-
-    <!-- Snapshot Result Modal -->
-    <div id="snapshotModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="font-bold text-lg text-slate-200 flex items-center space-x-2">
-                    <i class="fa-solid fa-camera text-blue-500"></i>
-                    <span>검사 캡처 결과</span>
-                </h3>
-                <button id="btnCloseModal" class="text-slate-400 hover:text-slate-200 p-1">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <div class="relative rounded-2xl overflow-hidden border border-slate-800 bg-black aspect-video flex items-center justify-center">
-                <canvas id="snapshotCanvas" class="w-full h-full object-contain"></canvas>
-            </div>
-            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-                <div class="flex justify-between text-sm">
-                    <span class="text-slate-400">최종 판정</span>
-                    <span id="modalResultBadge" class="font-bold px-2.5 py-0.5 rounded-full text-xs">OK</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-slate-400">측정된 치수</span>
-                    <span id="modalDimension" class="font-mono font-bold text-blue-400">0.0 mm</span>
-                </div>
-            </div>
-            <div class="flex space-x-3">
-                <button id="btnSaveRecord" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-blue-600/30">
-                    기록 저장 및 계속
-                </button>
-            </div>
-        </div>
+        <div id="status-badge">대기 중</div>
     </div>
 
-    <!-- Custom Notification Toast -->
-    <div id="toastNotification" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-900/95 border border-slate-700 text-slate-200 px-4 py-2.5 rounded-2xl shadow-2xl z-50 opacity-0 pointer-events-none transition-all duration-300 text-xs sm:text-sm font-medium flex items-center space-x-2">
-        <i class="fa-solid fa-circle-info text-blue-500"></i>
-        <span id="toastText">알림 메시지입니다.</span>
+    <!-- 카메라 뷰 및 그래픽 오버레이 -->
+    <div id="viewport">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay-canvas"></canvas>
     </div>
 
-    <script>
-        // DOM Elements
-        const webcam = document.getElementById('webcam');
-        const overlayCanvas = document.getElementById('overlayCanvas');
-        const ctx = overlayCanvas.getContext('2d');
-        const cameraPlaceholder = document.getElementById('cameraPlaceholder');
-        const btnStartCamera = document.getElementById('btnStartCamera');
-        const btnCapture = document.getElementById('btnCapture');
-        const btnSwitchCamera = document.getElementById('btnSwitchCamera');
-        const btnZoomIn = document.getElementById('btnZoomIn');
-        const btnZoomOut = document.getElementById('btnZoomOut');
-        const zoomLevelDisplay = document.getElementById('zoomLevelDisplay');
-        const focusRing = document.getElementById('focusRing');
-        const cameraContainer = document.getElementById('cameraContainer');
+    <!-- 하단 제어 버튼 -->
+    <div id="control-panel">
+        <button class="btn btn-settings" onclick="openSettings()">설정</button>
+        <button class="btn btn-capture" onclick="measureRedSegment()">빨간색 구간 측정/판정</button>
+    </div>
+
+    <!-- 설정 모달 -->
+    <div id="modal">
+        <div class="modal-card">
+            <h3>측정 규격 설정</h3>
+            <label>빨간색 구간 목표 길이 (mm)</label>
+            <input type="number" id="input-target" value="0.85" step="0.01">
+            <label>허용 공차 범위 (±mm)</label>
+            <input type="number" id="input-tolerance" value="0.05" step="0.01">
+            <button onclick="closeSettings()">적용 및 저장</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay-canvas');
+    const ctx = canvas.getContext('2d');
+    const statusBadge = document.getElementById('status-badge');
+
+    let targetLength = 0.85; // mm
+    let tolerance = 0.05;    // mm
+
+    // 화면 크기에 맞춰 캔버스 해상도 조절
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        drawGuides();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // 가이드라인 및 빨간색 측정 바 그리기
+    function drawGuides() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Settings & Inputs
-        const partSelector = document.getElementById('partSelector');
-        const targetSizeInput = document.getElementById('targetSize');
-        const toleranceSizeInput = document.getElementById('toleranceSize');
-        const calibrationRange = document.getElementById('calibrationRange');
-        const calibrationVal = document.getElementById('calibrationVal');
-        const guideButtons = document.querySelectorAll('.guide-btn');
-        
-        // Display elements
-        const statusBanner = document.getElementById('statusBanner');
-        const statusIconBox = document.getElementById('statusIconBox');
-        const statusText = document.getElementById('statusText');
-        const measuredValueDisplay = document.getElementById('measuredValueDisplay');
-        
-        // Stats
-        const statTotal = document.getElementById('statTotal');
-        const statOk = document.getElementById('statOk');
-        const statNg = document.getElementById('statNg');
-        const btnResetStats = document.getElementById('btnResetStats');
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
 
-        // Modal
-        const snapshotModal = document.getElementById('snapshotModal');
-        const btnCloseModal = document.getElementById('btnCloseModal');
-        const snapshotCanvas = document.getElementById('snapshotCanvas');
-        const modalResultBadge = document.getElementById('modalResultBadge');
-        const modalDimension = document.getElementById('modalDimension');
-        const btnSaveRecord = document.getElementById('btnSaveRecord');
-        const toastNotification = document.getElementById('toastNotification');
-        const btnToggleSettings = document.getElementById('btnToggleSettings');
-        const controlSidebar = document.getElementById('controlSidebar');
-        const btnFullscreen = document.getElementById('btnFullscreen');
+        // 1. 파란색 프로파일 경계선 (참조용)
+        ctx.strokeStyle = '#00d2ff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx - 120, cy - 40);
+        ctx.lineTo(cx - 40, cy + 40);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx + 40, cy + 40);
+        ctx.lineTo(cx + 120, cy - 40);
+        ctx.stroke();
 
-        // App State
-        let mediaStream = null;
-        let currentFacingMode = 'environment'; // default rear camera
-        let currentZoom = 1.0;
-        let maxZoom = 3.0;
-        let minZoom = 1.0;
-        let zoomStep = 0.2;
-        let selectedGuide = 'box';
-        let stats = { total: 0, ok: 0, ng: 0 };
-        let imageCapture = null;
-        let trackCapabilities = null;
+        // 2. 빨간색 구간 측정선 (상단 수평선, 하단 수평선, 화살표)
+        const lineY1 = cy + 10;
+        const lineY2 = cy + 35;
 
-        // Part presets
-        const partPresets = {
-            bolt: { target: 20.0, tolerance: 0.5 },
-            pcb: { target: 5.0, tolerance: 0.2 },
-            pin: { target: 10.0, tolerance: 0.3 },
-            custom: { target: 15.0, tolerance: 0.5 }
-        };
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 2;
 
-        // Initialize App
-        function initApp() {
-            setupEventListeners();
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-        }
+        // 상단 수평선
+        ctx.beginPath();
+        ctx.moveTo(cx - 50, lineY1);
+        ctx.lineTo(cx - 10, lineY1);
+        ctx.stroke();
 
-        function showToast(message) {
-            document.getElementById('toastText').innerText = message;
-            toastNotification.classList.remove('opacity-0', 'pointer-events-none');
-            toastNotification.classList.add('opacity-100');
-            setTimeout(() => {
-                toastNotification.classList.remove('opacity-100');
-                toastNotification.classList.add('opacity-0', 'pointer-events-none');
-            }, 2500);
-        }
+        // 하단 수평선
+        ctx.beginPath();
+        ctx.moveTo(cx - 50, lineY2);
+        ctx.lineTo(cx - 10, lineY2);
+        ctx.stroke();
 
-        function resizeCanvas() {
-            overlayCanvas.width = cameraContainer.clientWidth;
-            overlayCanvas.height = cameraContainer.clientHeight;
-        }
+        // 수직 화살표 연결선
+        ctx.beginPath();
+        ctx.moveTo(cx - 30, lineY1);
+        ctx.lineTo(cx - 30, lineY2);
+        ctx.stroke();
 
-        function setupEventListeners() {
-            btnStartCamera.addEventListener('click', startCamera);
-            btnSwitchCamera.addEventListener('click', switchCamera);
-            
-            // Zoom controls
-            btnZoomIn.addEventListener('click', () => adjustZoom(zoomStep));
-            btnZoomOut.addEventListener('click', () => adjustZoom(-zoomStep));
+        // 텍스트 안내
+        ctx.fillStyle = '#e74c3c';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText("빨간색 측정 구간", cx - 110, lineY1 + 15);
+    }
 
-            // Part presets change
-            partSelector.addEventListener('change', (e) => {
-                const preset = partPresets[e.target.value];
-                if (preset) {
-                    targetSizeInput.value = preset.target;
-                    toleranceSizeInput.value = preset.tolerance;
-                    showToast(`${e.target.options[e.target.selectedIndex].text} 기준 불러옴`);
-                }
+    // 카메라 구동
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { exact: "environment" } },
+                audio: false
             });
-
-            // Calibration slider
-            calibrationRange.addEventListener('input', (e) => {
-                calibrationVal.innerText = `${parseFloat(e.target.value).toFixed(2)} px/mm`;
-            });
-
-            // Guide buttons
-            guideButtons.forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    guideButtons.forEach(b => {
-                        b.classList.remove('bg-blue-600', 'border-blue-500', 'text-white');
-                        b.classList.add('bg-slate-800', 'border-slate-700', 'text-slate-300');
-                    });
-                    const targetBtn = e.currentTarget;
-                    targetBtn.classList.remove('bg-slate-800', 'border-slate-700', 'text-slate-300');
-                    targetBtn.classList.add('bg-blue-600', 'border-blue-500', 'text-white');
-                    selectedGuide = targetBtn.getAttribute('data-guide');
-                });
-            });
-
-            // Touch / Click focus simulation or manual focus
-            cameraContainer.addEventListener('click', (e) => {
-                const rect = cameraContainer.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                focusRing.style.left = `${x}px`;
-                focusRing.style.top = `${y}px`;
-                focusRing.classList.remove('opacity-0');
-                setTimeout(() => {
-                    focusRing.classList.add('opacity-0');
-                }, 800);
-
-                // Try applying hardware focus if ImageCapture/Track supports
-                if (mediaStream) {
-                    const track = mediaStream.getVideoTracks()[0];
-                    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-                    if (capabilities.focusMode && capabilities.focusMode.includes('manual')) {
-                        track.applyConstraints({
-                            advanced: [{ focusMode: 'manual' }]
-                        }).catch(err => console.log('Focus constraint error:', err));
-                    }
-                }
-                showToast("초점 영역 조정됨");
-            });
-
-            // Capture button
-            btnCapture.addEventListener('click', performInspection);
-            btnCloseModal.addEventListener('click', () => snapshotModal.classList.add('hidden'));
-            btnSaveRecord.addEventListener('click', () => {
-                snapshotModal.classList.add('hidden');
-                showToast("검사 결과가 기록되었습니다.");
-            });
-
-            // Reset stats
-            btnResetStats.addEventListener('click', () => {
-                stats = { total: 0, ok: 0, ng: 0 };
-                updateStatsDisplay();
-                showToast("통계가 초기화되었습니다.");
-            });
-
-            // Toggle settings sidebar on mobile
-            btnToggleSettings.addEventListener('click', () => {
-                controlSidebar.classList.toggle('hidden');
-            });
-
-            // Fullscreen toggle
-            btnFullscreen.addEventListener('click', () => {
-                if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen().catch(err => {
-                        showToast("전체화면 모드를 지원하지 않습니다.");
-                    });
-                } else {
-                    if (document.exitFullscreen) {
-                        document.exitFullscreen();
-                    }
-                }
-            });
-        }
-
-        // Camera Initialization
-        async function startCamera() {
+            video.srcObject = stream;
+        } catch (err) {
             try {
-                if (mediaStream) {
-                    mediaStream.getTracks().forEach(track => track.stop());
-                }
-
-                const constraints = {
-                    video: {
-                        facingMode: currentFacingMode,
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    },
-                    audio: false
-                };
-
-                mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-                webcam.srcObject = mediaStream;
-                cameraPlaceholder.classList.add('hidden');
-
-                const track = mediaStream.getVideoTracks()[0];
-                trackCapabilities = track.getCapabilities ? track.getCapabilities() : {};
-                
-                if (trackCapabilities.zoom) {
-                    minZoom = trackCapabilities.zoom.min || 1.0;
-                    maxZoom = trackCapabilities.zoom.max || 5.0;
-                    currentZoom = trackCapabilities.zoom.min || 1.0;
-                }
-
-                showToast("카메라가 정상적으로 연결되었습니다.");
-                requestAnimationFrame(renderLoop);
-
-            } catch (err) {
-                console.error("Camera error:", err);
-                showToast("카메라 권한을 확인하거나 지원 기기인지 확인하세요.");
+                const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = fallbackStream;
+            } catch (e) {
+                console.warn("카메라를 실행할 수 없습니다. (HTTPS 환경 확인 필요)");
             }
         }
+        resizeCanvas();
+    }
 
-        async function switchCamera() {
-            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            await startCamera();
-        }
+    // 빨간색 구간 측정 및 OK/NG 판정 실행
+    function measureRedSegment() {
+        statusBadge.innerText = "측정 중...";
+        statusBadge.className = "";
 
-        async function adjustZoom(delta) {
-            currentZoom = Math.max(minZoom, Math.min(maxZoom, currentZoom + delta));
-            zoomLevelDisplay.innerText = `${currentZoom.toFixed(1)}x`;
+        setTimeout(() => {
+            // 현장 시뮬레이션 오차 반영 (실제 현장 연동 시 픽셀 거리 계산식 대입)
+            const simulatedVal = parseFloat((targetLength + (Math.random() - 0.45) * 0.08).toFixed(2));
+            const diff = Math.abs(simulatedVal - targetLength);
 
-            if (mediaStream) {
-                const track = mediaStream.getVideoTracks()[0];
-                try {
-                    await track.applyConstraints({
-                        advanced: [{ zoom: currentZoom }]
-                    });
-                } catch (e) {
-                    // Fallback to CSS transform scale if hardware zoom isn't directly exposed
-                    webcam.style.transform = `scale(${currentZoom})`;
-                }
-            }
-        }
-
-        // Real-time overlay loop and simulated dimensional measurement
-        function renderLoop() {
-            if (!mediaStream) return;
-
-            const width = overlayCanvas.width;
-            const height = overlayCanvas.height;
-            ctx.clearRect(0, 0, width, height);
-
-            // Draw Measurement Guide Lines
-            ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([6, 6]);
-
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const boxSize = Math.min(width, height) * 0.45;
-
-            if (selectedGuide === 'box') {
-                ctx.strokeRect(centerX - boxSize / 2, centerY - boxSize / 2, boxSize, boxSize);
-                
-                // Corner markers
-                const cornerLen = 20;
-                ctx.setLineDash([]);
-                ctx.strokeStyle = '#60a5fa';
-                ctx.lineWidth = 3;
-                // Top-Left
-                ctx.beginPath();
-                ctx.moveTo(centerX - boxSize / 2, centerY - boxSize / 2 + cornerLen);
-                ctx.lineTo(centerX - boxSize / 2, centerY - boxSize / 2);
-                ctx.lineTo(centerX - boxSize / 2 + cornerLen, centerY - boxSize / 2);
-                ctx.stroke();
-                // Top-Right
-                ctx.beginPath();
-                ctx.moveTo(centerX + boxSize / 2 - cornerLen, centerY - boxSize / 2);
-                ctx.lineTo(centerX + boxSize / 2, centerY - boxSize / 2);
-                ctx.lineTo(centerX + boxSize / 2, centerY - boxSize / 2 + cornerLen);
-                ctx.stroke();
-                // Bottom-Left
-                ctx.beginPath();
-                ctx.moveTo(centerX - boxSize / 2, centerY + boxSize / 2 - cornerLen);
-                ctx.lineTo(centerX - boxSize / 2, centerY + boxSize / 2);
-                ctx.lineTo(centerX - boxSize / 2 + cornerLen, centerY + boxSize / 2);
-                ctx.stroke();
-                // Bottom-Right
-                ctx.beginPath();
-                ctx.moveTo(centerX + boxSize / 2 - cornerLen, centerY + boxSize / 2);
-                ctx.lineTo(centerX + boxSize / 2, centerY + boxSize / 2);
-                ctx.lineTo(centerX + boxSize / 2, centerY + boxSize / 2 - cornerLen);
-                ctx.stroke();
-
-            } else if (selectedGuide === 'line') {
-                ctx.beginPath();
-                ctx.moveTo(centerX - boxSize, centerY);
-                ctx.lineTo(centerX + boxSize, centerY);
-                ctx.stroke();
-            } else if (selectedGuide === 'cross') {
-                ctx.beginPath();
-                ctx.moveTo(centerX - boxSize / 2, centerY);
-                ctx.lineTo(centerX + boxSize / 2, centerY);
-                ctx.moveTo(centerX, centerY - boxSize / 2);
-                ctx.lineTo(centerX, centerY + boxSize / 2);
-                ctx.stroke();
-            }
-
-            // Calculate simulated dynamic dimension based on target size and slight realistic fluctuation
-            const target = parseFloat(targetSizeInput.value) || 20.0;
-            const tolerance = parseFloat(toleranceSizeInput.value) || 0.5;
-            const calibration = parseFloat(calibrationRange.value) || 1.0;
-
-            // Pseudo-measurement simulation for real-time responsiveness
-            const timeFactor = Date.now() / 1000;
-            const noise = (Math.sin(timeFactor * 3) * 0.15) + (Math.random() * 0.08 - 0.04);
-            const measured = Number((target + noise * (tolerance * 0.8)).toFixed(2));
-
-            measuredValueDisplay.innerText = `${measured.toFixed(2)} mm`;
-
-            // Evaluate OK / NG
-            const diff = Math.abs(measured - target);
-            const isOk = diff <= tolerance;
-
-            if (isOk) {
-                statusBanner.className = "absolute top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 bg-slate-900/90 backdrop-blur-md border border-green-500/80 p-3 rounded-2xl shadow-2xl z-30 flex items-center justify-between transition-all duration-300 status-ok";
-                statusIconBox.className = "w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center text-green-400 font-bold";
-                statusIconBox.innerHTML = '<i class="fa-solid fa-check"></i>';
-                statusText.innerText = "합격 (OK)";
-                statusText.className = "text-base font-bold text-green-400";
+            if (diff <= tolerance) {
+                statusBadge.innerText = `OK (${simulatedVal}mm)`;
+                statusBadge.className = "ok";
             } else {
-                statusBanner.className = "absolute top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 bg-slate-900/90 backdrop-blur-md border border-red-500/80 p-3 rounded-2xl shadow-2xl z-30 flex items-center justify-between transition-all duration-300 status-ng";
-                statusIconBox.className = "w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400 font-bold";
-                statusIconBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
-                statusText.innerText = "불량 (NG)";
-                statusText.className = "text-base font-bold text-red-400";
+                statusBadge.innerText = `NG (${simulatedVal}mm)`;
+                statusBadge.className = "ng";
             }
+        }, 300);
+    }
 
-            requestAnimationFrame(renderLoop);
-        }
+    function openSettings() { document.getElementById('modal').style.display = 'flex'; }
+    function closeSettings() {
+        targetLength = parseFloat(document.getElementById('input-target').value);
+        tolerance = parseFloat(document.getElementById('input-tolerance').value);
+        document.getElementById('target-display').innerText = targetLength + " mm";
+        document.getElementById('modal').style.display = 'none';
+    }
 
-        // Perform Inspection Snapshot
-        function performInspection() {
-            if (!mediaStream) {
-                showToast("먼저 카메라를 시작해주세요.");
-                return;
-            }
-
-            const sCtx = snapshotCanvas.getContext('2d');
-            snapshotCanvas.width = webcam.videoWidth || 1280;
-            snapshotCanvas.height = webcam.videoHeight || 720;
-
-            // Draw video frame to snapshot canvas
-            sCtx.drawImage(webcam, 0, 0, snapshotCanvas.width, snapshotCanvas.height);
-
-            const target = parseFloat(targetSizeInput.value) || 20.0;
-            const tolerance = parseFloat(toleranceSizeInput.value) || 0.5;
-            const currentMeasured = parseFloat(measuredValueDisplay.innerText);
-            const isOk = Math.abs(currentMeasured - target) <= tolerance;
-
-            // Update stats
-            stats.total++;
-            if (isOk) stats.ok++;
-            else stats.ng++;
-            updateStatsDisplay();
-
-            // Populate Modal
-            modalDimension.innerText = `${currentMeasured.toFixed(2)} mm`;
-            if (isOk) {
-                modalResultBadge.innerText = "합격 (OK)";
-                modalResultBadge.className = "font-bold px-3 py-1 rounded-full text-xs bg-green-500/20 text-green-400 border border-green-500/30";
-            } else {
-                modalResultBadge.innerText = "불량 (NG)";
-                modalResultBadge.className = "font-bold px-3 py-1 rounded-full text-xs bg-red-500/20 text-red-400 border border-red-500/30";
-            }
-
-            snapshotModal.classList.remove('hidden');
-        }
-
-        function updateStatsDisplay() {
-            statTotal.innerText = stats.total;
-            statOk.innerText = stats.ok;
-            statNg.innerText = stats.ng;
-        }
-
-        window.onload = initApp;
-    </script>
+    initCamera();
+</script>
 </body>
 </html>
