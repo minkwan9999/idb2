@@ -3,33 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>널링 비전 측정 - Step 1: 프로파일 찾기</title>
+    <title>널링 비전 측정 - Step 1 (버튼 수정)</title>
     <style>
         * { box-sizing: border-box; touch-action: none; }
-        body { margin: 0; padding: 0; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
-        #app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
         
-        /* 카메라 및 캡처 뷰포트 */
+        #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; height: 100dvh; position: relative; }
+        
+        /* 상단 상태 바 (고정 높이) */
+        #header-panel { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.85); padding: 12px 15px; z-index: 20; border-bottom: 1px solid #333; }
+        .spec-info span { font-size: 11px; color: #aaa; display: block; }
+        .spec-info strong { font-size: 14px; color: #fff; }
+        #status-badge { padding: 6px 12px; font-size: 13px; font-weight: bold; border-radius: 6px; background: #2980b9; color: #fff; }
+
+        /* 카메라 및 캔버스 뷰포트 (남은 공간 모두 차지) */
         #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         #video, #vision-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
         #vision-canvas { z-index: 5; image-rendering: -webkit-optimize-contrast; display: none; }
 
-        /* 상단 상태 바 */
-        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.8); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
-        .spec-info span { font-size: 11px; color: #aaa; display: block; }
-        .spec-info strong { font-size: 14px; color: #fff; }
-        
-        #status-badge { padding: 8px 12px; font-size: 14px; font-weight: bold; border-radius: 6px; background: #2980b9; color: #fff; }
-
         /* 우측 줌 컨트롤 */
-        #zoom-control { position: absolute; right: 15px; top: 90px; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; }
+        #zoom-control { position: absolute; right: 15px; top: 15px; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; }
         #zoom-control span { font-size: 10px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
-        #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 110px; width: 8px; accent-color: #00d2ff; }
+        #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 100px; width: 8px; accent-color: #00d2ff; }
 
-        /* 하단 제어 버튼 */
-        #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.95); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; }
-        .btn { flex: 1; padding: 14px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
-        .btn-action { background: #2980b9; color: white; }
+        /* 하단 제어 패널 (안전영역 padding 포함하여 절대 잘리지 않도록 고정) */
+        #control-panel { flex: 0 0 auto; background: rgba(20,20,20,0.95); padding: 12px 15px; padding-bottom: max(12px, env(safe-area-inset-bottom)); z-index: 20; display: flex; justify-content: center; align-items: center; border-top: 1px solid #333; }
+        .btn { width: 100%; padding: 16px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
+        .btn-action { background: #2980b9; color: white; box-shadow: 0 4px 10px rgba(41, 128, 185,.4); }
     </style>
 </head>
 <body>
@@ -41,22 +41,22 @@
             <span>현재 단계</span>
             <strong>Step 1: 프로파일(외곽) 추출</strong>
         </div>
-        <div id="status-badge">대기 중 (정렬 후 캡처)</div>
+        <div id="status-badge">대기 중</div>
     </div>
 
-    <!-- 우측 줌 슬라이더 -->
-    <div id="zoom-control">
-        <span>ZOOM</span>
-        <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="updateZoom(this.value)">
-    </div>
-
-    <!-- 뷰포트 -->
+    <!-- 뷰포트 (카메라 영역) -->
     <div id="viewport">
         <video id="video" autoplay playsinline muted></video>
         <canvas id="vision-canvas"></canvas>
+
+        <!-- 우측 줌 슬라이더 -->
+        <div id="zoom-control">
+            <span>ZOOM</span>
+            <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" oninput="updateZoom(this.value)">
+        </div>
     </div>
 
-    <!-- 하단 제어 버튼 -->
+    <!-- 하단 제어 버튼 (화면 최하단 고정 배치) -->
     <div id="control-panel">
         <button class="btn btn-action" id="main-btn" onclick="captureAndFindProfile()">캡처 및 파란색 프로파일 추출</button>
     </div>
@@ -132,12 +132,11 @@
             mainBtn.innerText = "재촬영 (RESET)";
             mainBtn.style.backgroundColor = "#e74c3c";
 
-            statusBadge.innerText = "프로파일 분석 중...";
+            statusBadge.innerText = "분석 중...";
 
             setTimeout(() => {
-                // 이미지 중앙 부근에 널링 산/골 외곽선을 따라 파란색 프로파일 라인 자동 표기
                 drawBlueProfile(vW, vH);
-                statusBadge.innerText = "추출 완료 (파란색선 확인)";
+                statusBadge.innerText = "추출 완료";
                 statusBadge.style.backgroundColor = "#27ae60";
             }, 500);
 
@@ -149,23 +148,21 @@
             isCaptured = false;
             mainBtn.innerText = "캡처 및 파란색 프로파일 추출";
             mainBtn.style.backgroundColor = "#2980b9";
-            statusBadge.innerText = "대기 중 (정렬 후 캡처)";
+            statusBadge.innerText = "대기 중";
             statusBadge.style.backgroundColor = "#2980b9";
         }
     }
 
-    // 파란색 프로파일 선을 화면 비율에 맞춰 그리는 함수
     function drawBlueProfile(w, h) {
         const cx = w / 2;
         const cy = h / 2;
 
         ctx.strokeStyle = '#00d2ff';
-        ctx.lineWidth = 8; // 고해상도 기준 두께
+        ctx.lineWidth = 8;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         
         ctx.beginPath();
-        // 널링 산 삼각형 윤곽을 따라가는 파란색 외곽선
         ctx.moveTo(cx - 400, cy - 150);
         ctx.lineTo(cx - 240, cy + 180);
         ctx.lineTo(cx - 80, cy - 60);
