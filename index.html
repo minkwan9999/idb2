@@ -47,7 +47,7 @@
         #zoom-control span { font-size: 10px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
         #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 100px; width: 8px; accent-color: #00d2ff; }
 
-        /* 하단 제어 버튼 및 버전 표기 */
+        /* 하단 제어 버튼 및 앱 버전 표기 */
         #control-panel { flex: 0 0 auto; background: rgba(20,20,20,0.95); padding: 12px 15px; padding-bottom: max(12px, env(safe-area-inset-bottom)); z-index: 20; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #333; }
         .btn-row { display: flex; gap: 10px; width: 100%; justify-content: center; align-items: center; }
         .btn { flex: 1; padding: 14px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
@@ -110,7 +110,7 @@
             <button class="btn btn-settings" onclick="openSettings()">설정</button>
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.3.4 (Knurling Inspector)</div>
+        <div class="app-version">v1.3.5 (Knurling Inspector)</div>
     </div>
 
     <!-- 설정 모달 -->
@@ -182,15 +182,16 @@
         const b2 = getCenter(handleB2);
         const b3 = getCenter(handleB3);
 
-        lineBlue1.setAttribute('x1', b2.x);
-        lineBlue1.setAttribute('y1', b2.y);
-        lineBlue1.setAttribute('x2', b3.x);
-        lineBlue1.setAttribute('y2', b3.y);
+        lineBlue1.setAttribute('x1', b1.x);
+        lineBlue1.setAttribute('y1', b1.y);
+        lineBlue1.setAttribute('x2', b2.x);
+        lineBlue1.setAttribute('y2', b2.y);
 
-        lineBlue2.setAttribute('x1', b3.x);
-        lineBlue2.setAttribute('y1', b3.y);
-        lineBlue2.setAttribute('x2', b1.x);
-        lineBlue2.setAttribute('y2', b1.y);
+        // b1, b2 선분에서 b3로 내린 법선(높이) 계산 및 시각화용 선분 연결
+        lineBlue2.setAttribute('x1', (b1.x + b2.x) / 2);
+        lineBlue2.setAttribute('y1', (b1.y + b2.y) / 2);
+        lineBlue2.setAttribute('x2', b3.x);
+        lineBlue2.setAttribute('y2', b3.y);
 
         const r1 = getCenter(handleR1);
         const r2 = getCenter(handleR2);
@@ -199,21 +200,26 @@
         lineRed.setAttribute('x2', r2.x);
         lineRed.setAttribute('y2', r2.y);
 
-        const baseMidX = (b2.x + b1.x) / 2;
-        const baseMidY = (b2.y + b1.y) / 2;
-        const heightPx = Math.abs(b3.y - baseMidY);
+        // b1-b2 선분과 b3 간의 수직 거리(법선 길이 px) 계산
+        const A = b2.y - b1.y;
+        const B = b1.x - b2.x;
+        const C = (b2.x * b1.y) - (b1.x * b2.y);
+        const normalHeightPx = Math.abs(A * b3.x + B * b3.y + C) / Math.sqrt(A * A + B * B);
 
-        // 실시간 삼각형 높이 계산 (픽셀 환산)
-        const liveHeightMm = parseFloat(((heightPx / currentZoom) * 0.01).toFixed(2));
+        // 법선 높이를 실제 mm로 환산하여 상단 표기 (참조 높이 0.25mm 활용)
+        const liveHeightMm = parseFloat(((normalHeightPx / currentZoom) * (referenceHeight / (normalHeightPx > 0 ? normalHeightPx : 1)) * (normalHeightPx / 100)).toFixed(3)) || 0.25;
         calcHeightEl.innerText = liveHeightMm;
 
-        const scaleFactor = heightPx > 0 ? heightPx / referenceHeight : 1;
+        // 배율 산정: (B1-B2 선분에서 B3로 내린 법선 길이 px) / 0.25mm
+        const scaleFactor = normalHeightPx > 0 ? normalHeightPx / referenceHeight : 1;
 
+        // 빨간색 결육 픽셀 거리 계산
         const dx = r2.x - r1.x;
         const dy = r2.y - r1.y;
         const redPixelDistance = Math.sqrt(dx * dx + dy * dy);
 
-        const currentMeasuredVal = parseFloat(((redPixelDistance / currentZoom) * scaleFactor * 0.01).toFixed(2));
+        // 최종 실시간 결육 길이 = (빨간색 결육 픽셀 거리 / 줌 배율) * 배율
+        const currentMeasuredVal = parseFloat((((redPixelDistance / currentZoom) / scaleFactor) * referenceHeight).toFixed(2));
 
         const diff = Math.abs(currentMeasuredVal - targetLength);
         if (isCaptured) {
