@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>널링 불량선별 및 구간 측정 웹앱</title>
+    <title>널링 불량선별 및 캡처 측정 웹앱</title>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
         #app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; }
         
-        /* 카메라 / 비디오 영역 */
+        /* 카메라 / 캡처 화면 영역 */
         #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
-        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; }
-        
-        /* 오버레이 캔버스 (파란색 가이드 + 빨간색 측정선) */
-        #overlay-canvas { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        #video, #snapshot-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
+        #snapshot-canvas { display: none; z-index: 5; }
+
+        /* 파란색 맞춤형 결육 가이드라인 오버레이 (SVG) */
+        #guide-overlay { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: flex; justify-content: center; align-items: center; }
         
         /* 상단 정보 패널 */
-        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
+        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.65); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
         .spec-info span { font-size: 12px; color: #aaa; display: block; }
         .spec-info strong { font-size: 15px; color: #fff; }
         
@@ -27,11 +28,16 @@
         #status-badge.ng { background: #c0392b; box-shadow: 0 0 12px rgba(192, 57, 43, 0.6); animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.6; } }
 
+        /* 우측 확대(Zoom) 슬라이더 컨트롤 */
+        #zoom-control { position: absolute; right: 15px; top: 90px; z-index: 20; background: rgba(0,0,0,0.6); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; backdrop-filter: blur(5px); }
+        #zoom-control span { font-size: 11px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
+        #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 120px; width: 8px; accent-color: #00d2ff; cursor: pointer; }
+
         /* 하단 컨트롤 패널 */
         #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.85); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
-        .btn { flex: 1; padding: 12px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
-        .btn-capture { background: #e74c3c; color: white; }
-        .btn-capture:active { background: #c0392b; }
+        .btn { flex: 1; padding: 13px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
+        .btn-action { background: #2980b9; color: white; }
+        .btn-action:active { background: #1f618d; }
         .btn-settings { background: #7f8c8d; color: white; max-width: 80px; }
 
         /* 설정 모달 */
@@ -49,140 +55,151 @@
     <!-- 상단 대시보드 -->
     <div id="header-panel">
         <div class="spec-info">
-            <span>빨간색 구간 기준치</span>
-            <strong id="target-display">0.85 mm</strong>
+            <span>기준 결육 길이</span>
+            <strong id="target-display">2.98 mm</strong>
         </div>
-        <div id="status-badge">대기 중</div>
+        <div id="status-badge">대기 중 (정렬 후 캡처)</div>
     </div>
 
-    <!-- 카메라 뷰 및 그래픽 오버레이 -->
+    <!-- 우측 확대(Zoom) 슬라이더 -->
+    <div id="zoom-control">
+        <span>ZOOM</span>
+        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="changeZoom(this.value)">
+    </div>
+
+    <!-- 카메라 및 캡처 뷰포트 -->
     <div id="viewport">
         <video id="video" autoplay playsinline muted></video>
-        <canvas id="overlay-canvas"></canvas>
+        <canvas id="snapshot-canvas"></canvas>
+        
+        <!-- 파란색 맞춤형 결육 가이드라인 SVG 오버레이 -->
+        <div id="guide-overlay">
+            <svg width="340" height="200" viewBox="0 0 340 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M40 60 L100 140 L170 75 L240 140 L300 60" stroke="#00d2ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <circle cx="170" cy="75" r="4.5" fill="#00d2ff"/>
+                <text x="170" y="45" fill="#00d2ff" font-size="13" text-anchor="middle" font-weight="bold">ALIGN PROFILE</text>
+            </svg>
+        </div>
     </div>
 
     <!-- 하단 제어 버튼 -->
     <div id="control-panel">
         <button class="btn btn-settings" onclick="openSettings()">설정</button>
-        <button class="btn btn-capture" onclick="measureRedSegment()">빨간색 구간 측정/판정</button>
+        <button class="btn btn-action" id="main-btn" onclick="captureAndMeasure()">확인 및 캡처 측정</button>
     </div>
 
     <!-- 설정 모달 -->
     <div id="modal">
         <div class="modal-card">
             <h3>측정 규격 설정</h3>
-            <label>빨간색 구간 목표 길이 (mm)</label>
-            <input type="number" id="input-target" value="0.85" step="0.01">
+            <label>기준 규격 (mm)</label>
+            <input type="number" id="input-target" value="2.98" step="0.01">
             <label>허용 공차 범위 (±mm)</label>
-            <input type="number" id="input-tolerance" value="0.05" step="0.01">
-            <button onclick="closeSettings()">적용 및 저장</button>
+            <input type="number" id="input-tolerance" value="0.10" step="0.01">
+            <button onclick="closeSettings()">저장 및 적용</button>
         </div>
     </div>
 </div>
 
 <script>
     const video = document.getElementById('video');
-    const canvas = document.getElementById('overlay-canvas');
+    const canvas = document.getElementById('snapshot-canvas');
     const ctx = canvas.getContext('2d');
     const statusBadge = document.getElementById('status-badge');
+    const zoomSlider = document.getElementById('zoom-slider');
+    const mainBtn = document.getElementById('main-btn');
 
-    let targetLength = 0.85; // mm
-    let tolerance = 0.05;    // mm
-
-    // 화면 크기에 맞춰 캔버스 해상도 조절
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        drawGuides();
-    }
-    window.addEventListener('resize', resizeCanvas);
-
-    // 가이드라인 및 빨간색 측정 바 그리기
-    function drawGuides() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-
-        // 1. 파란색 프로파일 경계선 (참조용)
-        ctx.strokeStyle = '#00d2ff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(cx - 120, cy - 40);
-        ctx.lineTo(cx - 40, cy + 40);
-        ctx.lineTo(cx, cy);
-        ctx.lineTo(cx + 40, cy + 40);
-        ctx.lineTo(cx + 120, cy - 40);
-        ctx.stroke();
-
-        // 2. 빨간색 구간 측정선 (상단 수평선, 하단 수평선, 화살표)
-        const lineY1 = cy + 10;
-        const lineY2 = cy + 35;
-
-        ctx.strokeStyle = '#e74c3c';
-        ctx.lineWidth = 2;
-
-        // 상단 수평선
-        ctx.beginPath();
-        ctx.moveTo(cx - 50, lineY1);
-        ctx.lineTo(cx - 10, lineY1);
-        ctx.stroke();
-
-        // 하단 수평선
-        ctx.beginPath();
-        ctx.moveTo(cx - 50, lineY2);
-        ctx.lineTo(cx - 10, lineY2);
-        ctx.stroke();
-
-        // 수직 화살표 연결선
-        ctx.beginPath();
-        ctx.moveTo(cx - 30, lineY1);
-        ctx.lineTo(cx - 30, lineY2);
-        ctx.stroke();
-
-        // 텍스트 안내
-        ctx.fillStyle = '#e74c3c';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillText("빨간색 측정 구간", cx - 110, lineY1 + 15);
-    }
+    let targetLength = 2.98;
+    let tolerance = 0.10;
+    let videoStream = null;
+    let isCaptured = false;
+    let currentZoom = 1;
 
     // 카메라 구동
     async function initCamera() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
+            videoStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { exact: "environment" } },
                 audio: false
             });
-            video.srcObject = stream;
+            video.srcObject = videoStream;
         } catch (err) {
             try {
-                const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                video.srcObject = fallbackStream;
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = videoStream;
             } catch (e) {
-                console.warn("카메라를 실행할 수 없습니다. (HTTPS 환경 확인 필요)");
+                alert("카메라 권한을 확인해주세요. (HTTPS 환경 필수)");
             }
         }
-        resizeCanvas();
     }
 
-    // 빨간색 구간 측정 및 OK/NG 판정 실행
-    function measureRedSegment() {
-        statusBadge.innerText = "측정 중...";
-        statusBadge.className = "";
+    // 줌 조절 함수
+    async function changeZoom(val) {
+        currentZoom = parseFloat(val);
+        if (isCaptured) return; // 캡처된 상태에서는 줌 변경 안 함
 
-        setTimeout(() => {
-            // 현장 시뮬레이션 오차 반영 (실제 현장 연동 시 픽셀 거리 계산식 대입)
-            const simulatedVal = parseFloat((targetLength + (Math.random() - 0.45) * 0.08).toFixed(2));
-            const diff = Math.abs(simulatedVal - targetLength);
-
-            if (diff <= tolerance) {
-                statusBadge.innerText = `OK (${simulatedVal}mm)`;
-                statusBadge.className = "ok";
-            } else {
-                statusBadge.innerText = `NG (${simulatedVal}mm)`;
-                statusBadge.className = "ng";
+        if (videoStream) {
+            const track = videoStream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities();
+            if (capabilities && capabilities.zoom) {
+                try {
+                    await track.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+                    return;
+                } catch (err) {}
             }
-        }, 300);
+        }
+        video.style.transform = `scale(${currentZoom})`;
+    }
+
+    // [확인/캡처 버튼 동작]
+    function captureAndMeasure() {
+        if (!isCaptured) {
+            // 1단계: 현재 화면 스냅샷 캡처
+            canvas.width = video.videoWidth || window.innerWidth;
+            canvas.height = video.videoHeight || window.innerHeight;
+            
+            // 비디오 프레임을 캔버스에 그림 (현재 줌 상태 반영)
+            ctx.save();
+            ctx.scale(currentZoom, currentZoom);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            canvas.style.display = 'block';
+            video.style.display = 'none'; // 실시간 비디오 숨김 (정지 화면 유지)
+            
+            isCaptured = true;
+            mainBtn.innerText = "재촬영 (RESET)";
+            mainBtn.style.backgroundColor = "#e74c3c";
+
+            // 2단계: 캡처된 이미지 분석 및 측정 시뮬레이션
+            statusBadge.innerText = "이미지 분석 중...";
+            statusBadge.className = "";
+
+            setTimeout(() => {
+                const variation = (Math.random() - 0.48) * 0.10;
+                const measured = parseFloat((targetLength + variation).toFixed(2));
+                const diff = Math.abs(measured - targetLength);
+
+                if (diff <= tolerance) {
+                    statusBadge.innerText = `OK (${measured}mm)`;
+                    statusBadge.className = "ok";
+                } else {
+                    statusBadge.innerText = `NG (${measured}mm)`;
+                    statusBadge.className = "ng";
+                }
+            }, 400);
+
+        } else {
+            // 재촬영 모드 복귀
+            canvas.style.display = 'none';
+            video.style.display = 'block';
+            
+            isCaptured = false;
+            mainBtn.innerText = "확인 및 캡처 측정";
+            mainBtn.style.backgroundColor = "#2980b9";
+            statusBadge.innerText = "대기 중 (정렬 후 캡처)";
+            statusBadge.className = "";
+        }
     }
 
     function openSettings() { document.getElementById('modal').style.display = 'flex'; }
