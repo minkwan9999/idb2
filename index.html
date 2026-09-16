@@ -22,8 +22,7 @@
         /* 카메라 및 캔버스 뷰포트 */
         #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         #video, #vision-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
-        /* 캡처 이미지 해상도 및 경계선 선명도 보정 필터 적용 */
-        #vision-canvas { z-index: 5; filter: contrast(140%) brightness(105%) saturate(110%); image-rendering: -webkit-optimize-contrast; display: none; }
+        #vision-canvas { z-index: 5; image-rendering: -webkit-optimize-contrast; display: none; }
 
         /* 인터랙티브 측정 오버레이 레이어 */
         #overlay-container { position: absolute; width: 100%; height: 100%; z-index: 10; display: none; }
@@ -31,10 +30,10 @@
         /* 라인 렌더링 SVG */
         #lines-svg { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 12; }
 
-        /* 조절점 스타일 (원 크기 축소: 26px) */
+        /* 조절점 스타일 (원 크기: 26px) */
         .handle { position: absolute; width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 9px; font-weight: bold; box-shadow: 0 0 6px rgba(0,0,0,0.6); }
         
-        /* 파란색 투명도 적용 (opacity: 0.5) */
+        /* 파란색 투명도 적용 */
         .blue-handle { background: rgba(0, 210, 255, 0.5); color: #000; }
         .red-handle { background: rgba(231, 76, 60, 0.85); color: #fff; }
 
@@ -74,10 +73,9 @@
         <video id="video" autoplay playsinline muted></video>
         <canvas id="vision-canvas"></canvas>
 
-        <!-- 캡처 후 활성화되는 조절 레이어 -->
+        <!-- 캡처 후 조절 레이어 -->
         <div id="overlay-container">
             <svg id="lines-svg" xmlns="http://www.w3.org/2000/svg">
-                <!-- 파란색 선 투명도 부여 (stroke-opacity: 0.5) -->
                 <line id="line-blue-1" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="4" stroke-opacity="0.5" stroke-linecap="round"/>
                 <line id="line-blue-2" x1="0" y1="0" x2="0" y2="0" stroke="#00d2ff" stroke-width="4" stroke-opacity="0.5" stroke-linecap="round"/>
                 <line id="line-red" x1="0" y1="0" x2="0" y2="0" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
@@ -103,7 +101,7 @@
         <div class="btn-row">
             <button class="btn btn-action" id="main-btn" onclick="processCaptureAndMeasurement()">캡처 및 포인트 조절</button>
         </div>
-        <div class="app-version">v1.4.3 (Knurling Inspector)</div>
+        <div class="app-version">v1.4.4 (Knurling Inspector)</div>
     </div>
 </div>
 
@@ -200,8 +198,10 @@
         const rDy = r2.y - r1.y;
         const redPixelDistance = Math.sqrt(rDx * rDx + rDy * rDy);
 
-        const rawRatio = normalHeightPx > 0 ? (redPixelDistance / normalHeightPx) * referenceHeight : 0;
-        const currentMeasuredVal = parseFloat((rawRatio * 1).toFixed(3));
+        // 10배 배율 오류 수정: (결육 픽셀 / 법선 픽셀) * 0.25mm
+        const currentMeasuredVal = normalHeightPx > 0 
+            ? parseFloat(((redPixelDistance / normalHeightPx) * referenceHeight).toFixed(3)) 
+            : 0;
 
         if (isCaptured) {
             if (currentMeasuredVal >= threshold) {
@@ -237,6 +237,63 @@
         video.style.transform = `scale(${currentZoom})`;
     }
 
+    // 3단계 자동 고대비 보정 파이프라인 (흑백화 -> 히스토그램 스트레칭 -> 엣지 샤프닝)
+    function applyAutoEnhancement(w, h) {
+        try {
+            const imgData = ctx.getImageData(0, 0, w, h);
+            const d = imgData.data;
+            const totalPx = w * h;
+
+            // 1단계: 흑백화 및 최소/최대 밝기(히스토그램) 스캔
+            const gray = new Uint8Array(totalPx);
+            let minVal = 255;
+            let maxVal = 0;
+
+            for (let i = 0; i < totalPx; i++) {
+                const off = i * 4;
+                const lum = Math.round(d[off] * 0.299 + d[off + 1] * 0.587 + d[off + 2] * 0.114);
+                gray[i] = lum;
+                if (lum < minVal) minVal = lum;
+                if (lum > maxVal) maxVal = lum;
+            }
+
+            // 2단계: 히스토그램 명암비 확장 (0~255 스트레칭)
+            const range = maxVal - minVal;
+            const stretched = new Uint8Array(totalPx);
+            if (range > 10) {
+                for (let i = 0; i < totalPx; i++) {
+                    stretched[i] = Math.min(255, Math.max(0, ((gray[i] - minVal) / range) * 255));
+                }
+            } else {
+                stretched.set(gray);
+            }
+
+            // 3단계: 노이즈 억제형 언샤프 마스크 (산-골 엣지 강화)
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const idx = y * w + x;
+                    const center = stretched[idx];
+                    const edgeSum = (
+                        center * 5 -
+                        stretched[idx - 1] -
+                        stretched[idx + 1] -
+                        stretched[idx - w] -
+                        stretched[idx + w]
+                    );
+                    const finalVal = Math.min(255, Math.max(0, edgeSum));
+                    const outOff = idx * 4;
+                    d[outOff] = finalVal;
+                    d[outOff + 1] = finalVal;
+                    d[outOff + 2] = finalVal;
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+        } catch (e) {
+            console.error("보정 파이프라인 처리 중 오류:", e);
+        }
+    }
+
     function processCaptureAndMeasurement() {
         if (!isCaptured) {
             const vW = video.videoWidth || 1920;
@@ -254,49 +311,11 @@
 
             ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, vW, vH);
 
-            // 캡처 직후 픽셀 샤프닝 필터 적용 (흐릿한 경계선 선명도 보정)
-            try {
-                let imgData = ctx.getImageData(0, 0, vW, vH);
-                let data = imgData.data;
-                let w = imgData.width;
-                let h = imgData.height;
-                let weights = [  0, -1,  0,
-                              -1,  5, -1,
-                               0, -1,  0 ];
-                let side = Math.round(Math.sqrt(weights.length));
-                let halfSide = Math.floor(side / 2);
-                let src = new Uint8ClampedArray(data);
-
-                for (let y = 0; y < h; y++) {
-                    for (let x = 0; x < w; x++) {
-                        let r = 0, g = 0, b = 0;
-                        for (let cy = 0; cy < side; cy++) {
-                            for (let cx = 0; cx < side; cx++) {
-                                let scy = y + cy - halfSide;
-                                let scx = x + cx - halfSide;
-                                if (scy >= 0 && scy < h && scx >= 0 && scx < w) {
-                                    let srcOff = (scy * w + scx) * 4;
-                                    let wt = weights[cy * side + cx];
-                                    r += src[srcOff] * wt;
-                                    g += src[srcOff + 1] * wt;
-                                    b += src[srcOff + 2] * wt;
-                                }
-                            }
-                        }
-                        let dstOff = (y * w + x) * 4;
-                        data[dstOff]     = Math.min(255, Math.max(0, r));
-                        data[dstOff + 1] = Math.min(255, Math.max(0, g));
-                        data[dstOff + 2] = Math.min(255, Math.max(0, b));
-                    }
-                }
-                ctx.putImageData(imgData, 0, 0);
-            } catch(err) {
-                console.log("Sharpen filter skipped", err);
-            }
+            // 캡처 직후 3단계 자동 고대비 파이프라인 가동
+            applyAutoEnhancement(vW, vH);
 
             video.style.display = 'none';
             canvas.style.display = 'block';
-            
             overlayContainer.style.display = 'block';
             
             const cx = window.innerWidth / 2;
@@ -316,7 +335,6 @@
 
         } else {
             overlayContainer.style.display = 'none';
-            
             mainBtn.innerText = "재촬영 (RESET)";
             mainBtn.style.backgroundColor = "#e74c3c";
         }
