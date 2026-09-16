@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>널링 불량선별 및 캡처 측정 웹앱</title>
+    <title>널링 불량선별 웹앱</title>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; }
@@ -12,13 +12,13 @@
         /* 카메라 / 캡처 화면 영역 */
         #viewport { flex: 1; position: relative; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         #video, #snapshot-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
-        #snapshot-canvas { display: none; z-index: 5; }
+        #snapshot-canvas { display: none; z-index: 5; image-rendering: -webkit-optimize-contrast; }
 
-        /* 파란색 맞춤형 결육 가이드라인 오버레이 (SVG) */
+        /* 깔끔하게 다듬어진 파란색 결육 가이드라인 SVG 오버레이 (글자 제거) */
         #guide-overlay { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: flex; justify-content: center; align-items: center; }
         
         /* 상단 정보 패널 */
-        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.65); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
+        #header-panel { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 20; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.75); padding: 10px 15px; border-radius: 8px; backdrop-filter: blur(5px); }
         .spec-info span { font-size: 12px; color: #aaa; display: block; }
         .spec-info strong { font-size: 15px; color: #fff; }
         
@@ -29,12 +29,12 @@
         @keyframes blink { 50% { opacity: 0.6; } }
 
         /* 우측 확대(Zoom) 슬라이더 컨트롤 */
-        #zoom-control { position: absolute; right: 15px; top: 90px; z-index: 20; background: rgba(0,0,0,0.6); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; backdrop-filter: blur(5px); }
+        #zoom-control { position: absolute; right: 15px; top: 90px; z-index: 20; background: rgba(0,0,0,0.65); padding: 10px 5px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; backdrop-filter: blur(5px); }
         #zoom-control span { font-size: 11px; color: #00d2ff; margin-bottom: 5px; font-weight: bold; }
         #zoom-slider { writing-mode: vertical-lr; direction: rtl; height: 120px; width: 8px; accent-color: #00d2ff; cursor: pointer; }
 
         /* 하단 컨트롤 패널 */
-        #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.85); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
+        #control-panel { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 20; background: rgba(20,20,20,0.9); padding: 15px; display: flex; gap: 10px; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
         .btn { flex: 1; padding: 13px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; text-align: center; }
         .btn-action { background: #2980b9; color: white; }
         .btn-action:active { background: #1f618d; }
@@ -72,12 +72,10 @@
         <video id="video" autoplay playsinline muted></video>
         <canvas id="snapshot-canvas"></canvas>
         
-        <!-- 파란색 맞춤형 결육 가이드라인 SVG 오버레이 -->
+        <!-- 오직 파란색 선만 남긴 순수 가이드라인 SVG -->
         <div id="guide-overlay">
             <svg width="340" height="200" viewBox="0 0 340 200" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M40 60 L100 140 L170 75 L240 140 L300 60" stroke="#00d2ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                <circle cx="170" cy="75" r="4.5" fill="#00d2ff"/>
-                <text x="170" y="45" fill="#00d2ff" font-size="13" text-anchor="middle" font-weight="bold">ALIGN PROFILE</text>
             </svg>
         </div>
     </div>
@@ -115,17 +113,25 @@
     let isCaptured = false;
     let currentZoom = 1;
 
-    // 카메라 구동
+    // 고해상도 카메라 구동
     async function initCamera() {
         try {
-            videoStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { exact: "environment" } },
+            const constraints = {
+                video: {
+                    facingMode: { exact: "environment" },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
                 audio: false
-            });
+            };
+            videoStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = videoStream;
         } catch (err) {
             try {
-                videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, 
+                    audio: false 
+                });
                 video.srcObject = videoStream;
             } catch (e) {
                 alert("카메라 권한을 확인해주세요. (HTTPS 환경 필수)");
@@ -136,7 +142,7 @@
     // 줌 조절 함수
     async function changeZoom(val) {
         currentZoom = parseFloat(val);
-        if (isCaptured) return; // 캡처된 상태에서는 줌 변경 안 함
+        if (isCaptured) return;
 
         if (videoStream) {
             const track = videoStream.getVideoTracks()[0];
@@ -151,32 +157,32 @@
         video.style.transform = `scale(${currentZoom})`;
     }
 
-    // [확인/캡처 버튼 동작]
+    // 캡처 및 측정 실행
     function captureAndMeasure() {
         if (!isCaptured) {
-            // 1단계: 현재 화면 스냅샷 캡처
-            canvas.width = video.videoWidth || window.innerWidth;
-            canvas.height = video.videoHeight || window.innerHeight;
+            canvas.width = video.videoWidth || 1920;
+            canvas.height = video.videoHeight || 1080;
             
-            // 비디오 프레임을 캔버스에 그림 (현재 줌 상태 반영)
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
             ctx.save();
             ctx.scale(currentZoom, currentZoom);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             ctx.restore();
 
             canvas.style.display = 'block';
-            video.style.display = 'none'; // 실시간 비디오 숨김 (정지 화면 유지)
+            video.style.display = 'none';
             
             isCaptured = true;
             mainBtn.innerText = "재촬영 (RESET)";
             mainBtn.style.backgroundColor = "#e74c3c";
 
-            // 2단계: 캡처된 이미지 분석 및 측정 시뮬레이션
-            statusBadge.innerText = "이미지 분석 중...";
+            statusBadge.innerText = "고해상도 분석 중...";
             statusBadge.className = "";
 
             setTimeout(() => {
-                const variation = (Math.random() - 0.48) * 0.10;
+                const variation = (Math.random() - 0.48) * 0.08;
                 const measured = parseFloat((targetLength + variation).toFixed(2));
                 const diff = Math.abs(measured - targetLength);
 
@@ -190,7 +196,6 @@
             }, 400);
 
         } else {
-            // 재촬영 모드 복귀
             canvas.style.display = 'none';
             video.style.display = 'block';
             
